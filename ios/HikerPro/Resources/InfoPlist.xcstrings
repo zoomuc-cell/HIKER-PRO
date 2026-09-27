@@ -1,0 +1,26 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "HikeTracking": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "정확한 산행 경로와 거리를 기록하려면 정확한 위치가 필요합니다."
+          }
+        }
+      }
+    },
+    "NSLocationWhenInUseUsageDescription": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "HIKER PRO는 지도에 현재 위치를 표시하고 산행 경로, 거리, 고도를 기록하기 위해 위치 정보를 사용합니다. 위치 정보는 이 기기에만 저장됩니다."
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}
