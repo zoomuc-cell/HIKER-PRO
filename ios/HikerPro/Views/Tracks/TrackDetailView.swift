@@ -12,6 +12,14 @@ struct TrackDetailView: View {
     @State private var draftName = ""
 
     var body: some View {
+        if track.isDeleted || track.modelContext == nil {
+            ContentUnavailableView("Track Deleted", systemImage: "trash")
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         List {
             Section {
                 Group {

@@ -834,6 +834,16 @@
         }
       }
     },
+    "Track Deleted": {
+      "localizations": {
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "삭제된 기록"
+          }
+        }
+      }
+    },
     "Track Not Saved": {
       "localizations": {
         "ko": {

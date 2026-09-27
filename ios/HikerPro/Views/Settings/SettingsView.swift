@@ -56,13 +56,22 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .confirmationDialog("Delete all tracks?", isPresented: $isConfirmingDeleteAll, titleVisibility: .visible) {
                 Button("Delete All Tracks", role: .destructive) {
-                    try? modelContext.delete(model: Track.self)
-                    try? modelContext.save()
+                    deleteAllTracks()
                 }
             } message: {
                 Text("This permanently deletes every saved track. This can't be undone.")
             }
         }
+    }
+
+    /// Deletes each model individually (rather than a batch delete) so that any
+    /// open detail view sees `isDeleted` and stops reading the model.
+    private func deleteAllTracks() {
+        let tracks = (try? modelContext.fetch(FetchDescriptor<Track>())) ?? []
+        for track in tracks {
+            modelContext.delete(track)
+        }
+        try? modelContext.save()
     }
 
     private var authorizationText: LocalizedStringKey {
