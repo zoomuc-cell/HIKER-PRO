@@ -1,0 +1,35 @@
+buildscript {
+    ext {
+        buildToolsVersion = "37.0.0"
+        minSdkVersion = 24
+        compileSdkVersion = 37
+        targetSdkVersion = 36
+        ndkVersion = "27.1.12297006"
+        kotlinVersion = "2.2.0"
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle")
+        classpath("com.facebook.react:react-native-gradle-plugin")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+    }
+}
+
+apply plugin: "com.facebook.react.rootproject"
+
+// [15:34] GMS 위치 SDK 전 모듈 20.0.0 통일 (tslocationmanager 3.7.0 = class 시절 API)
+subprojects {
+    plugins.withId("com.android.library") {
+        configurations.all {
+            resolutionStrategy.force 'com.google.android.gms:play-services-location:20.0.0'
+        }
+    }
+    plugins.withId("com.android.application") {
+        configurations.all {
+            resolutionStrategy.force 'com.google.android.gms:play-services-location:20.0.0'
+        }
+    }
+}

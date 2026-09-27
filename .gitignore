@@ -1,0 +1,71 @@
+﻿# Dependencies
+node_modules/
+
+# Build outputs
+build/
+**/build/
+.gradle/
+**/.gradle/
+.dart_tool/
+android/app/.cxx/
+**/.cxx/
+
+# Environment / secrets
+.env
+.env.*
+local.properties
+key.properties
+gradle.properties
+google-services.json
+*.jks
+*.keystore
+*.pem
+*.p12
+*.aab
+*.apk
+
+# Keystore backups - NEVER upload
+keystore_backup*/
+keystore_backup*.zip
+keystore_zip_check/
+
+# IDE
+.idea/
+**/.idea/
+.vscode/
+*.iml
+
+# Backups / temporary
+*.bak
+*.bak*
+App.before_*.tsx
+App_BEFORE_*.tsx
+*_BEFORE_*.tsx
+src_HIKERPRO_TS_ZERO/
+mipmap_backup_*/
+
+# Logs / diagnostics
+*.log
+crash*.txt
+deps*.txt
+tap*.txt
+ui.xml
+npm_*.log
+pp_out.log
+
+# Generated/install inspection
+installed-apk-check/
+installed-base.zip
+
+# Large media / archives
+*.mp4
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local Firebase / old Android backups
+android/app/google-services*.json
+android/app/build_BEFORE_*.gradle
+android/backup_old/
