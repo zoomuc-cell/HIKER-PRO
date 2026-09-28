@@ -39,12 +39,27 @@ jobs:
       - name: Build for iOS Simulator
         working-directory: ios
         run: |
-          set -o pipefail
-          xcodebuild \
+          if ! xcodebuild \
             -workspace HikerPro.xcworkspace \
             -scheme HikerPro \
             -configuration Release \
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
+            ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO \
-            build | tail -n 400
+            build > build.log 2>&1; then
+            echo "===== errors ====="
+            grep -n -E "error:|fatal error|\*\* BUILD FAILED|The following build commands failed" -A3 build.log | head -200
+            echo "===== tail ====="
+            tail -n 40 build.log
+            exit 1
+          fi
+          tail -n 5 build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-log
+          path: ios/build.log
+          if-no-files-found: ignore
