@@ -12,6 +12,7 @@ import {
   Share,
   Linking,
   Image,
+  Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -19,7 +20,13 @@ import {launchImageLibrary, launchCamera} from 'react-native-image-picker';
 import DeviceInfo from 'react-native-device-info';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 
+// Android: ANDROID_ID, iOS: identifierForVendor (앱을 삭제 후 재설치하면 바뀜)
 const ADMIN_DEVICE_IDS = ['9da67a462cc43660'];
+
+const IS_IOS = Platform.OS === 'ios';
+// App Store 가이드라인(3.1.1: 디지털 이용권은 인앱 결제 필수, 2.1: '준비 중' 기능 금지)에 맞춰
+// iOS 에서는 결제 연동 전의 멤버십 안내와 준비 중 메뉴를 숨긴다.
+const IOS_HIDDEN_MENU_KEYS = ['map', 'history'];
 
 const DEFAULT_USER = {
   name: '사용자',
@@ -397,14 +404,15 @@ const ProfileScreen = () => {
   const enterAdmin = async () => {
     let devId = '';
     try {
-      devId = (await DeviceInfo.getAndroidId()) || '';
+      devId = (IS_IOS ? await DeviceInfo.getUniqueId() : await DeviceInfo.getAndroidId()) || '';
     } catch (e) {
       devId = '';
     }
     const normId = String(devId).trim().toLowerCase();
     const allow = ADMIN_DEVICE_IDS.map(x => String(x).trim().toLowerCase());
     if (!normId || allow.indexOf(normId) < 0) {
-      Alert.alert('접근 거부', '관리자 기기가 아닙니다.');
+      // iOS 기기 ID 는 ADMIN_DEVICE_IDS 에 추가해야 하므로 안내에 표시
+      Alert.alert('접근 거부', IS_IOS ? '관리자 기기가 아닙니다.\n기기 ID: ' + normId : '관리자 기기가 아닙니다.');
       return;
     }
     setAdminDevId(normId);
@@ -550,6 +558,7 @@ const ProfileScreen = () => {
           </View>
         </View>
 
+        {!IS_IOS && (
         <View style={styles.card}>
           <View style={styles.cardHead}>
             <Text style={styles.cardTitle}>멤버십</Text>
@@ -561,9 +570,10 @@ const ProfileScreen = () => {
             월간 Pro ₩2,900 / 연간 Pro ₩29,000 / 관광객 이용권 ₩1,500
           </Text>
         </View>
+        )}
 
         <View style={styles.card}>
-          {menuItems.map(item => (
+          {menuItems.filter(item => !IS_IOS || IOS_HIDDEN_MENU_KEYS.indexOf(item.key) < 0).map(item => (
             <TouchableOpacity key={item.key} style={styles.menuBtn} onPress={item.onPress}>
               <View style={styles.menuLeft}>
                 <View style={styles.menuIcon}>

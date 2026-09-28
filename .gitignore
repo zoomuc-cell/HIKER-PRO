@@ -69,3 +69,14 @@ Thumbs.db
 android/app/google-services*.json
 android/app/build_BEFORE_*.gradle
 android/backup_old/
+
+# iOS / Xcode
+ios/Pods/
+ios/build/
+**/xcuserdata/
+*.xcuserstate
+**/.xcode.env.local
+*.ipa
+*.dSYM.zip
+*.mobileprovision
+vendor/bundle/

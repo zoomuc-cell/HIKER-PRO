@@ -1,4 +1,65 @@
-﻿import {Alert, PermissionsAndroid, Platform} from 'react-native';
+﻿import {Alert, Linking, PermissionsAndroid, Platform} from 'react-native';
+import {check, request, PERMISSIONS, RESULTS} from 'react-native-permissions';
+
+const showIosSettingsAlert = (title: string, message: string) => {
+  Alert.alert(title, message, [
+    {text: '취소', style: 'cancel'},
+    {text: '설정 열기', onPress: () => Linking.openSettings().catch(() => {})},
+  ]);
+};
+
+// iOS: '앱을 사용하는 동안' 권한만 요청한다. 활동 기록 중 화면이 꺼져도 기록이 계속되는 것은
+// Info.plist 의 UIBackgroundModes(location) 덕분이며, 이때 iOS 가 상태 막대에 파란색 표시를 보여 준다.
+// Apple 가이드라인에 따라 시스템 권한 창 앞에 '취소' 버튼이 있는 자체 안내 창은 띄우지 않는다.
+export const requestIosLocationPermission = async (
+  showSettingsHint = true,
+): Promise<boolean> => {
+  try {
+    const status = await request(PERMISSIONS.IOS.LOCATION_WHEN_IN_USE);
+    if (status === RESULTS.GRANTED || status === RESULTS.LIMITED) {
+      return true;
+    }
+    if (showSettingsHint && status === RESULTS.BLOCKED) {
+      showIosSettingsAlert(
+        '위치 권한 필요',
+        '활동 경로를 기록하려면 설정 > HIKERPRO > 위치에서 "앱을 사용하는 동안"을 선택해 주세요.',
+      );
+    }
+    return false;
+  } catch (error) {
+    console.warn('iOS location permission request failed:', error);
+    return false;
+  }
+};
+
+// 이미 권한이 있는지만 확인 (권한 창을 띄우지 않음)
+export const hasIosLocationPermission = async (): Promise<boolean> => {
+  try {
+    const status = await check(PERMISSIONS.IOS.LOCATION_WHEN_IN_USE);
+    return status === RESULTS.GRANTED || status === RESULTS.LIMITED;
+  } catch (error) {
+    return false;
+  }
+};
+
+const requestIosCameraPermission = async (): Promise<boolean> => {
+  try {
+    const status = await request(PERMISSIONS.IOS.CAMERA);
+    if (status === RESULTS.GRANTED || status === RESULTS.LIMITED) {
+      return true;
+    }
+    if (status === RESULTS.BLOCKED) {
+      showIosSettingsAlert(
+        '카메라 권한 필요',
+        '사진 촬영과 QR 코드 스캔을 하려면 설정 > HIKERPRO에서 카메라 접근을 허용해 주세요.',
+      );
+    }
+    return false;
+  } catch (error) {
+    console.warn('iOS camera permission request failed:', error);
+    return false;
+  }
+};
 
 const showBackgroundLocationDisclosure = (): Promise<boolean> => {
   return new Promise(resolve => {
@@ -24,6 +85,9 @@ const showBackgroundLocationDisclosure = (): Promise<boolean> => {
 };
 
 export const requestLocationPermission = async (): Promise<boolean> => {
+  if (Platform.OS === 'ios') {
+    return requestIosLocationPermission();
+  }
   if (Platform.OS !== 'android') {
     return true;
   }
@@ -78,6 +142,9 @@ export const requestLocationPermission = async (): Promise<boolean> => {
 };
 
 export const requestCameraPermission = async (): Promise<boolean> => {
+  if (Platform.OS === 'ios') {
+    return requestIosCameraPermission();
+  }
   if (Platform.OS !== 'android') {
     return true;
   }
@@ -98,6 +165,19 @@ export const requestCameraPermission = async (): Promise<boolean> => {
     console.warn('Camera permission request failed:', error);
     return false;
   }
+};
+
+// react-native-image-picker 오류 코드를 사용자 안내 문구로 변환
+export const cameraErrorMessage = (errorCode?: string, errorMessage?: string) => {
+  if (errorCode === 'camera_unavailable') {
+    return '이 기기에서는 카메라를 사용할 수 없습니다.';
+  }
+  if (errorCode === 'permission') {
+    return Platform.OS === 'ios'
+      ? '카메라 권한이 없습니다. 설정 > HIKERPRO에서 카메라 접근을 허용해 주세요.'
+      : '카메라 권한이 없습니다. 설정에서 카메라 권한을 허용해 주세요.';
+  }
+  return errorMessage || errorCode || '알 수 없는 오류';
 };
 
 export const checkAllPermissions = async () => {

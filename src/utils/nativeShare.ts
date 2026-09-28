@@ -1,11 +1,12 @@
-// HIKERPRO Android 공유 모듈(HikerShare) JS 래퍼
-// - 이미지: ACTION_SEND + EXTRA_STREAM(content:// via FileProvider) + 선택 EXTRA_TEXT
+// HIKERPRO 공유 모듈(HikerShare) JS 래퍼
+// - Android: ACTION_SEND + EXTRA_STREAM(content:// via FileProvider) + 선택 EXTRA_TEXT
+// - iOS: UIActivityViewController (ios/HikerPro/HikerShareModule.swift)
 // - 텍스트: 모듈이 없으면 React Native 기본 Share 로 대체
 import {NativeModules, Platform, Share} from 'react-native';
 
 export type ImageShareResult = {
   filePath: string; // 실제 공유한 파일 (canonical path)
-  contentUri: string; // 대상 앱에 전달한 content:// URI
+  contentUri: string; // 대상 앱에 전달한 URI (Android: content://, iOS: file://)
   mimeType: string;
   textAttached: boolean; // EXTRA_TEXT 포함 여부 (대상 앱이 무시할 수 있음)
 };
@@ -28,7 +29,9 @@ type HikerShareNative = {
 
 const HikerShare: HikerShareNative | undefined = NativeModules.HikerShare;
 
-export const isImageShareAvailable = () => Platform.OS === 'android' && !!HikerShare;
+const isSupportedPlatform = Platform.OS === 'android' || Platform.OS === 'ios';
+
+export const isImageShareAvailable = () => isSupportedPlatform && !!HikerShare;
 
 export class ShareError extends Error {
   code: string;
@@ -68,7 +71,7 @@ export const shareTextContent = async (message: string, title?: string) => {
   await Share.share({title, message});
 };
 
-// 이미지 1장 + 텍스트 공유 (Android 전용 네이티브 모듈)
+// 이미지 1장 + 텍스트 공유 (Android/iOS 네이티브 모듈)
 export const shareImageContent = async (
   fileUri: string,
   message?: string,
@@ -81,14 +84,14 @@ export const shareImageContent = async (
   return typeof result === 'object' && result !== null ? result : null;
 };
 
-// 지도 PNG + 활동 요약 카드를 이미지 1장으로 합성 (네이티브 Canvas). 결과: file:// PNG (cacheDir)
+// 지도 PNG + 활동 요약 카드를 이미지 1장으로 합성 (Android Canvas / iOS UIGraphicsImageRenderer). 결과: file:// PNG (캐시 폴더)
 export const composeActivityCard = async (
   mapUri: string,
   title: string,
   rows: {label: string; value: string}[],
   footer?: string,
 ) => {
-  if (Platform.OS !== 'android' || !HikerShare?.composeActivityCard) {
+  if (!isSupportedPlatform || !HikerShare?.composeActivityCard) {
     throw new ShareError('E_UNAVAILABLE', ERROR_MESSAGES.E_UNAVAILABLE);
   }
   return HikerShare.composeActivityCard(mapUri, title, rows, footer || null);
@@ -96,7 +99,7 @@ export const composeActivityCard = async (
 
 // 텍스트 클립보드 복사 (네이티브 모듈)
 export const copyTextToClipboard = async (text: string, label?: string) => {
-  if (Platform.OS !== 'android' || !HikerShare?.copyText) {
+  if (!isSupportedPlatform || !HikerShare?.copyText) {
     throw new ShareError('E_UNAVAILABLE', ERROR_MESSAGES.E_UNAVAILABLE);
   }
   await HikerShare.copyText(text, label || null);

@@ -1,5 +1,5 @@
 import React, {forwardRef} from 'react';
-import {StyleSheet, StyleProp, ViewStyle} from 'react-native';
+import {Platform, StyleSheet, StyleProp, ViewStyle} from 'react-native';
 import MapView, {Marker, Polyline, PROVIDER_GOOGLE} from 'react-native-maps';
 
 // 활동 경로 지도 (TrackingScreen 의 경로·사진 보기와 같은 표현: 녹색 Polyline, 사진 위치 Marker)
@@ -71,7 +71,7 @@ const RouteMapPreview = forwardRef<MapView, Props>(
     return (
       <MapView
         ref={ref}
-        provider={PROVIDER_GOOGLE}
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         style={[styles.map, style]}
         initialRegion={regionForRoute(points)}
         showsUserLocation={false}

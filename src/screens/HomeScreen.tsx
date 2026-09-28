@@ -22,6 +22,7 @@ import {launchCamera} from 'react-native-image-picker';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LocationService from '../services/LocationService';
+import {cameraErrorMessage, hasIosLocationPermission, requestCameraPermission} from '../utils/permissions';
 import HomeShareSheet from '../components/HomeShareSheet';
 
 type ActivityType =
@@ -116,6 +117,9 @@ const toValidLocation = (
 
 // 이미 위치 권한이 있을 때만 true (홈에서 새 권한 팝업을 띄우지 않음)
 const hasLocationPermission = async (): Promise<boolean> => {
+  if (Platform.OS === 'ios') {
+    return hasIosLocationPermission();
+  }
   if (Platform.OS !== 'android') {
     return true;
   }
@@ -146,6 +150,10 @@ const fetchFreshLocation = async (): Promise<any | null> => {
 };
 
 const phoneForUrl = (phone: string) => phone.replace(/[^0-9+]/g, '');
+
+// 문자 앱 링크: iOS 는 'sms:번호&body=', Android 는 'sms:번호?body=' 형식을 사용
+const smsUrl = (phone: string, body: string) =>
+  'sms:' + phone + (Platform.OS === 'ios' ? '&' : '?') + 'body=' + encodeURIComponent(body);
 
 const HomeScreen = ({navigation}: any) => {
   const {width} = useWindowDimensions();
@@ -220,6 +228,8 @@ const HomeScreen = ({navigation}: any) => {
           Alert.alert('카메라 권한', '사진 촬영을 위해 카메라 권한이 필요합니다.');
           return;
         }
+      } else if (Platform.OS === 'ios' && !(await requestCameraPermission())) {
+        return;
       }
       const result = await launchCamera({
         mediaType: 'photo',
@@ -233,7 +243,7 @@ const HomeScreen = ({navigation}: any) => {
         return;
       }
       if (result.errorCode) {
-        Alert.alert('사진 촬영 실패', result.errorMessage || result.errorCode);
+        Alert.alert('사진 촬영 실패', cameraErrorMessage(result.errorCode, result.errorMessage));
         return;
       }
       const asset = result.assets?.[0];
@@ -397,7 +407,7 @@ const HomeScreen = ({navigation}: any) => {
     const sms119 = () => {
       if (loc) {
         const msg = '긴급 구조 요청! 위치: 위도 ' + loc.latitude.toFixed(6) + ', 경도 ' + loc.longitude.toFixed(6);
-        openUrlSafe('sms:119?body=' + encodeURIComponent(msg), '문자 전송 실패');
+        openUrlSafe(smsUrl('119', msg), '문자 전송 실패');
       } else {
         Alert.alert('알림', '현재 위치를 아직 받지 못했습니다. 전화로 신고해 주세요.');
       }
@@ -416,10 +426,7 @@ const HomeScreen = ({navigation}: any) => {
               {
                 text: '위치 문자',
                 onPress: () =>
-                  openUrlSafe(
-                    'sms:' + phone + '?body=' + encodeURIComponent('긴급 구조 요청! 위치: ' + pos),
-                    '문자 전송 실패',
-                  ),
+                  openUrlSafe(smsUrl(phone, '긴급 구조 요청! 위치: ' + pos), '문자 전송 실패'),
               },
               {text: '취소', style: 'cancel'},
             ]),

@@ -1,0 +1,50 @@
+name: iOS build
+
+# iOS 앱이 컴파일되는지 확인 (서명 없이 시뮬레이터용으로 빌드)
+on:
+  push:
+    paths:
+      - 'ios/**'
+      - 'src/**'
+      - 'App.tsx'
+      - 'index.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'react-native.config.js'
+      - '.github/workflows/ios-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install JS dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Install CocoaPods
+        working-directory: ios
+        run: pod install
+
+      - name: Build for iOS Simulator
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace HikerPro.xcworkspace \
+            -scheme HikerPro \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tail -n 400

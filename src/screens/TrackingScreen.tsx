@@ -7,7 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {Text, Card, Button, ProgressBar} from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import LocationService from '../services/LocationService';
-import {requestLocationPermission} from '../utils/permissions';
+import {cameraErrorMessage, requestCameraPermission, requestLocationPermission} from '../utils/permissions';
 
 const HISTORY_KEY = 'hiker_activity_history';
 const VISITED_KEY = 'hiker_visited_regions';
@@ -361,6 +361,8 @@ const TrackingScreen = ({route}: any) => {
           Alert.alert('카메라 권한', '사진 촬영을 위해 카메라 권한이 필요합니다.');
           return;
         }
+      } else if (Platform.OS === 'ios' && !(await requestCameraPermission())) {
+        return;
       }
       const result = await launchCamera({
         mediaType: 'photo',
@@ -372,7 +374,7 @@ const TrackingScreen = ({route}: any) => {
       });
       if (result.didCancel) return;
       if (result.errorCode) {
-        Alert.alert('사진 촬영 실패', result.errorMessage || result.errorCode);
+        Alert.alert('사진 촬영 실패', cameraErrorMessage(result.errorCode, result.errorMessage));
         return;
       }
       const asset = result.assets?.[0];
@@ -942,7 +944,7 @@ const TrackingScreen = ({route}: any) => {
           </View>
           {selectedRecord?.routePoints && selectedRecord.routePoints.length > 0 ? (
             <MapView
-              provider={PROVIDER_GOOGLE}
+              provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
               style={styles.routeMap}
               initialRegion={{
                 latitude: selectedRecord.routePoints[0].latitude,

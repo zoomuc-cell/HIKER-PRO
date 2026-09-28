@@ -1,5 +1,5 @@
 import React, {useEffect, useState, useRef} from 'react';
-import {View, StyleSheet, Text, TouchableOpacity, Alert} from 'react-native';
+import {View, StyleSheet, Text, TouchableOpacity, Alert, Platform} from 'react-native';
 import MapView, {Marker, Polyline, PROVIDER_GOOGLE} from 'react-native-maps';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import LocationService from '../services/LocationService';
@@ -61,12 +61,12 @@ const MapScreen = ({navigation, route}: {navigation: any; route?: any}) => {
         restaurant.latitude,
         restaurant.longitude
       );
-      return distance < 5; // 5km ?대궡
+      return distance < 5; // 5km 이내
     });
   };
 
   const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 6371; // 吏援?諛섍꼍 (km)
+    const R = 6371; // 지구 반경 (km)
     const dLat = deg2rad(lat2 - lat1);
     const dLon = deg2rad(lon2 - lon1);
     const a =
@@ -142,7 +142,7 @@ const MapScreen = ({navigation, route}: {navigation: any; route?: any}) => {
     <View style={styles.container}>
       <MapView
         ref={mapRef}
-        provider={PROVIDER_GOOGLE}
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         style={styles.map}
         initialRegion={{
           latitude: 37.4449,

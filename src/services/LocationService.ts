@@ -1,105 +1,131 @@
 import Geolocation from 'react-native-geolocation-service';
-import {PermissionsAndroid, Platform, NativeModules} from 'react-native';
+import {AppState, PermissionsAndroid, Platform} from 'react-native';
 import {accelerometer, barometer} from 'react-native-sensors';
+import {requestIosLocationPermission} from '../utils/permissions';
 
-const {LocationManager} = NativeModules;
+type WatchCallback = (location: any) => void;
+
+// iOS 에서 활동 기록 중이 아닐 때 앱이 백그라운드로 가면 멈췄다가, 다시 활성화되면 재개하는 watch
+type IosWatch = {
+  callback: WatchCallback;
+  nativeId: number | null;
+};
 
 class LocationService {
   private watchIds = new Set<number>();
   private trackingActive = false;
+  private iosWatches = new Set<IosWatch>();
   currentLocation: any = null;
   barometerSubscription: any = null;
   accelerometerSubscription: any = null;
-  
-  // ?쇱꽌 ?곗씠?????  
+
+  // 센서 데이터
   sensorData: {
     pressure: number | null;
     acceleration: number | null;
     previousAltitude: number | null;
     altitudeHistory: number[];
   } = {
-    pressure: null,        // 湲곗븬 (hPa)
-    acceleration: null,    // 媛?띾룄
+    pressure: null,        // 기압 (hPa)
+    acceleration: null,    // 가속도
     previousAltitude: null,
     altitudeHistory: [] as number[],
   };
 
-  // GNSS ?뺥솗??湲곗? (誘명꽣)
+  // GNSS 정확도 기준 (미터)
   accuracyThresholds = {
-    excellent: 5,    // 짹5m ?댄븯
-    good: 10,        // 짹10m ?댄븯
-    moderate: 20,    // 짹20m ?댄븯
-    poor: 50,        // 짹50m ?댄븯
+    excellent: 5,    // ±5m 이하
+    good: 10,        // ±10m 이하
+    moderate: 20,    // ±20m 이하
+    poor: 50,        // ±50m 이하
   };
+
+  constructor() {
+    if (Platform.OS === 'ios') {
+      // iOS 는 Info.plist 의 UIBackgroundModes(location) 때문에 모든 watch 가 백그라운드에서도 계속된다.
+      // 사용자가 시작한 활동 기록 중에만 백그라운드 위치를 사용하도록, 기록 중이 아니면 백그라운드 진입 시 멈춘다.
+      AppState.addEventListener('change', state => {
+        if (state === 'background' && !this.trackingActive) {
+          this.pauseIosWatches();
+        } else if (state === 'active') {
+          this.resumeIosWatches();
+        }
+      });
+    }
+  }
 
   async requestPermission() {
     if (Platform.OS === 'android') {
       const granted = await PermissionsAndroid.request(
         PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
         {
-          title: 'Hiker Pro ?꾩튂 沅뚰븳',
-          message: 'Hiker Pro媛 硫??GNSS (GPS/GLONASS/BeiDou/Galileo)瑜??댁슜???뺣? ?꾩튂 異붿쟻???꾪빐 沅뚰븳???꾩슂?⑸땲??',
-          buttonPositive: '?덉슜',
-          buttonNegative: '嫄곕?',
+          title: 'Hiker Pro 위치 권한',
+          message: 'Hiker Pro가 멀티 GNSS (GPS/GLONASS/BeiDou/Galileo)를 이용한 정밀 위치 추적을 위해 권한이 필요합니다.',
+          buttonPositive: '허용',
+          buttonNegative: '거부',
         }
       );
       return granted === PermissionsAndroid.RESULTS.GRANTED;
+    }
+    if (Platform.OS === 'ios') {
+      return requestIosLocationPermission(false);
     }
     return true;
   }
 
   /**
-   * 湲곗븬怨?湲곕컲 怨좊룄 怨꾩궛
-   * ?쒖? ?湲곗븬 怨듭떇: h = 44330 * (1 - (P/P0)^0.1903)
+   * 기압계 기반 고도 계산
+   * 표준 대기압 공식: h = 44330 * (1 - (P/P0)^0.1903)
    */
   calculateAltitudeFromPressure(pressure: number): number {
-    const P0 = 1013.25; // ?댁닔硫??쒖? 湲곗븬 (hPa)
+    const P0 = 1013.25; // 해수면 표준 기압 (hPa)
     const altitude = 44330 * (1 - Math.pow(pressure / P0, 0.1903));
     return altitude;
   }
 
   /**
-   * 移쇰쭔 ?꾪꽣 媛꾩냼??踰꾩쟾 - 怨좊룄 ?뺥솗???μ긽
+   * 칼만 필터 간소화 버전 - 고도 정확도 향상
    */
   kalmanFilter(measurement: number, previousEstimate: number | null): number {
     if (!previousEstimate) return measurement;
     const Q = 0.01;
     const R = 2.0;
     const K = 1 / (1 + R / Q);
-    
+
     return previousEstimate + K * (measurement - previousEstimate);
   }
 
   /**
-   * ?쇱꽌 ?⑥쟾: GPS + 湲곗븬怨?+ 媛?띾룄怨?   */
+   * 센서 융합: GPS + 기압계 + 가속도계
+   */
   fuseSensorData(gpsAltitude: number, accuracy: number): number {
     let fusedAltitude = gpsAltitude;
 
-    // 1. 湲곗븬怨??곗씠?곌? ?덉쑝硫??듯빀
+    // 1. 기압계 데이터가 있으면 통합
     if (this.sensorData.pressure) {
       const baroAltitude = this.calculateAltitudeFromPressure(
         this.sensorData.pressure
       );
-      
-      // GPS ?뺥솗?꾩뿉 ?곕씪 媛以묒튂 議곗젙
+
+      // GPS 정확도에 따라 가중치 조정
       const gpsWeight = Math.min(1, 10 / (accuracy || 10));
       const baroWeight = 1 - gpsWeight;
-      
+
       fusedAltitude = gpsAltitude * gpsWeight + baroAltitude * baroWeight;
     }
 
-    // 2. 移쇰쭔 ?꾪꽣 ?곸슜
+    // 2. 칼만 필터 적용
     fusedAltitude = this.kalmanFilter(
       fusedAltitude,
       this.sensorData.previousAltitude
     );
 
-    // 3. ?대룞 ?됯퇏 (理쒓렐 5媛??곗씠??
+    // 3. 이동 평균 (최근 5개 데이터)
     this.sensorData.altitudeHistory.push(fusedAltitude);
     if (this.sensorData.altitudeHistory.length > 5) {
       this.sensorData.altitudeHistory.shift();
     }
-    
+
     const smoothedAltitude =
       this.sensorData.altitudeHistory.reduce((a, b) => a + b, 0) /
       this.sensorData.altitudeHistory.length;
@@ -109,7 +135,7 @@ class LocationService {
   }
 
   /**
-   * 湲곗븬怨??쇱꽌 ?쒖옉
+   * 기압계 센서 시작
    */
   startBarometer() {
     if (this.barometerSubscription) return;
@@ -125,7 +151,7 @@ class LocationService {
   }
 
   /**
-   * 媛?띾룄怨??쇱꽌 ?쒖옉 (?吏곸엫 媛먯?)
+   * 가속도계 센서 시작 (움직임 감지)
    */
   startAccelerometer() {
     if (this.accelerometerSubscription) return;
@@ -142,7 +168,7 @@ class LocationService {
   }
 
   /**
-   * GNSS ?뺥솗???됯?
+   * GNSS 정확도 평가
    */
   getAccuracyLevel(accuracy: number): string {
     if (!accuracy) return 'unknown';
@@ -154,23 +180,26 @@ class LocationService {
   }
 
   /**
-   * ?ъ슜 以묒씤 GNSS ?쒖뒪???뺤씤 (Android留?
+   * 사용 중인 GNSS 시스템 추정
+   * (Android 는 GnssStatus 로 확인할 수 있지만, 여기서는 정확도로 추정)
    */
   getActiveGNSS(position: any): string[] {
-    // Android?먯꽌??GnssStatus瑜??듯빐 ?뺤씤 媛??    // ?ш린?쒕뒗 ?뺥솗?꾨줈 異붿젙
     const gnssTypes = [];
-    
+
     if (position.coords.accuracy <= 3) {
-      // 理쒓퀬 ?뺥솗?? 5媛??쒖뒪??紐⑤몢 ?쒖꽦
+      // 최고 정확도: 5개 시스템 모두 활성
       gnssTypes.push('GPS', 'GLONASS', 'Galileo', 'BeiDou', 'QZSS');
     } else if (position.coords.accuracy <= 5) {
-      // ?곗닔: 4媛??쒖뒪??      gnssTypes.push('GPS', 'GLONASS', 'Galileo', 'BeiDou');
+      // 우수: 4개 시스템
+      gnssTypes.push('GPS', 'GLONASS', 'Galileo', 'BeiDou');
     } else if (position.coords.accuracy <= 10) {
-      // ?묓샇: 2-3媛??쒖뒪??      gnssTypes.push('GPS', 'GLONASS', 'QZSS');
+      // 양호: 2-3개 시스템
+      gnssTypes.push('GPS', 'GLONASS', 'QZSS');
     } else {
-      // 湲곕낯: GPS留?      gnssTypes.push('GPS');
+      // 기본: GPS만
+      gnssTypes.push('GPS');
     }
-    
+
     return gnssTypes;
   }
 
@@ -185,10 +214,10 @@ class LocationService {
         (position) => {
           const gpsAltitude = position.coords.altitude || 0;
           const accuracy = position.coords.accuracy || 999;
-          
-          // ?쇱꽌 ?⑥쟾?쇰줈 ?뺣? 怨좊룄 怨꾩궛
+
+          // 센서 융합으로 정밀 고도 계산
           const fusedAltitude = this.fuseSensorData(gpsAltitude, accuracy);
-          
+
           this.currentLocation = {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
@@ -200,7 +229,7 @@ class LocationService {
             speed: position.coords.speed,
             heading: position.coords.heading,
             timestamp: position.timestamp,
-            // ?쇱꽌 ?곗씠???ы븿
+            // 센서 데이터 포함
             pressure: this.sensorData.pressure,
             acceleration: this.sensorData.acceleration,
           };
@@ -242,9 +271,85 @@ class LocationService {
     }
   }
 
-  watchPosition(callback: (location: any) => void) {
+  private toLocation(position: any) {
+    const gpsAltitude = position.coords.altitude || 0;
+    const accuracy = position.coords.accuracy || 999;
+    const fusedAltitude = this.fuseSensorData(gpsAltitude, accuracy);
+
+    return {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+      altitude: fusedAltitude,
+      gpsAltitude,
+      accuracy,
+      accuracyLevel: this.getAccuracyLevel(accuracy),
+      activeGNSS: this.getActiveGNSS(position),
+      speed: position.coords.speed || 0,
+      heading: position.coords.heading || 0,
+      timestamp: position.timestamp,
+      pressure: this.sensorData.pressure,
+      acceleration: this.sensorData.acceleration,
+    };
+  }
+
+  private startNativeWatch(onLocation: WatchCallback, isRemoved: () => boolean) {
+    return Geolocation.watchPosition(
+      position => {
+        if (isRemoved()) {
+          return;
+        }
+        const location = this.toLocation(position);
+        this.currentLocation = location;
+        onLocation(location);
+      },
+      error => {
+        if (!isRemoved()) {
+          console.error('Watch position error:', error);
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        distanceFilter: 5,
+        interval: 2000,
+        fastestInterval: 1000,
+        forceRequestLocation: true,
+        showLocationDialog: true,
+        // iOS: 백그라운드에서 위치를 사용하는 동안 상태 막대에 파란색 표시
+        showsBackgroundLocationIndicator: true,
+        accuracy: {
+          android: 'high',
+          ios: 'bestForNavigation',
+        },
+      },
+    );
+  }
+
+  private pauseIosWatches() {
+    this.iosWatches.forEach(watch => {
+      if (watch.nativeId !== null) {
+        Geolocation.clearWatch(watch.nativeId);
+        this.watchIds.delete(watch.nativeId);
+        watch.nativeId = null;
+      }
+    });
+    this.stopSensorsIfUnused();
+  }
+
+  private resumeIosWatches() {
+    this.iosWatches.forEach(watch => {
+      if (watch.nativeId === null) {
+        this.startBarometer();
+        this.startAccelerometer();
+        watch.nativeId = this.startNativeWatch(watch.callback, () => !this.iosWatches.has(watch));
+        this.watchIds.add(watch.nativeId);
+      }
+    });
+  }
+
+  watchPosition(callback: WatchCallback) {
     let removed = false;
     let localWatchId: number | null = null;
+    const iosWatch: IosWatch = {callback, nativeId: null};
 
     this.requestPermission()
       .then(hasPermission => {
@@ -255,52 +360,7 @@ class LocationService {
         this.startBarometer();
         this.startAccelerometer();
 
-        localWatchId = Geolocation.watchPosition(
-          position => {
-            if (removed) {
-              return;
-            }
-
-            const gpsAltitude = position.coords.altitude || 0;
-            const accuracy = position.coords.accuracy || 999;
-            const fusedAltitude = this.fuseSensorData(gpsAltitude, accuracy);
-
-            const location = {
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-              altitude: fusedAltitude,
-              gpsAltitude,
-              accuracy,
-              accuracyLevel: this.getAccuracyLevel(accuracy),
-              activeGNSS: this.getActiveGNSS(position),
-              speed: position.coords.speed || 0,
-              heading: position.coords.heading || 0,
-              timestamp: position.timestamp,
-              pressure: this.sensorData.pressure,
-              acceleration: this.sensorData.acceleration,
-            };
-
-            this.currentLocation = location;
-            callback(location);
-          },
-          error => {
-            if (!removed) {
-              console.error('Watch position error:', error);
-            }
-          },
-          {
-            enableHighAccuracy: true,
-            distanceFilter: 5,
-            interval: 2000,
-            fastestInterval: 1000,
-            forceRequestLocation: true,
-            showLocationDialog: true,
-            accuracy: {
-              android: 'high',
-              ios: 'bestForNavigation',
-            },
-          },
-        );
+        localWatchId = this.startNativeWatch(callback, () => removed);
 
         if (removed) {
           Geolocation.clearWatch(localWatchId);
@@ -310,6 +370,10 @@ class LocationService {
         }
 
         this.watchIds.add(localWatchId);
+        if (Platform.OS === 'ios') {
+          iosWatch.nativeId = localWatchId;
+          this.iosWatches.add(iosWatch);
+        }
       })
       .catch(error => {
         if (!removed) {
@@ -325,6 +389,14 @@ class LocationService {
         }
 
         removed = true;
+
+        if (Platform.OS === 'ios') {
+          // 백그라운드 복귀 후 재시작된 경우 nativeId 가 바뀌어 있을 수 있음
+          this.iosWatches.delete(iosWatch);
+          if (iosWatch.nativeId !== null) {
+            localWatchId = iosWatch.nativeId;
+          }
+        }
 
         if (localWatchId !== null) {
           Geolocation.clearWatch(localWatchId);
@@ -345,8 +417,8 @@ class LocationService {
     try {
       await this.getCurrentPosition();
     } catch (error) {
-      this.trackingActive = false;
-      this.stopSensorsIfUnused();
+      // 첫 위치를 못 받아도 활동 기록은 계속되므로(TrackingScreen) trackingActive 는 유지한다.
+      // iOS 에서 이 값이 false 가 되면 백그라운드 진입 시 기록용 위치 수신이 멈춘다.
       throw error;
     }
   }
@@ -360,11 +432,11 @@ class LocationService {
   }
 
   /**
-   * GNSS ?곹깭 ?뺣낫 諛섑솚
+   * GNSS 상태 정보 반환
    */
   getGNSSStatus() {
     if (!this.currentLocation) return null;
-    
+
     return {
       activeGNSS: this.currentLocation.activeGNSS || [],
       accuracy: this.currentLocation.accuracy,
@@ -376,11 +448,3 @@ class LocationService {
 }
 
 export default new LocationService();
-
-
-
-
-
-
-
-
