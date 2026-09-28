@@ -46,6 +46,7 @@ jobs:
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             ARCHS=arm64 \
+            -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO \
             build > build.log 2>&1; then
             echo "===== errors ====="
@@ -57,10 +58,36 @@ jobs:
           fi
           tail -n 5 build.log
 
+      - name: Launch on iOS Simulator (smoke test)
+        working-directory: ios
+        run: |
+          APP=build/DerivedData/Build/Products/Release-iphonesimulator/HikerPro.app
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone')))")
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl install "$DEVICE" "$APP"
+          xcrun simctl launch "$DEVICE" com.hikerpro.app
+          sleep 40
+          xcrun simctl io "$DEVICE" screenshot launch.png || true
+          xcrun simctl spawn "$DEVICE" log show --last 2m --style compact \
+            --predicate 'process == "HikerPro"' > app.log 2>&1 || true
+          echo "===== JS / native errors ====="
+          grep -E "Unhandled JS Exception|RCTFatal|Invariant Violation|TypeError|ReferenceError|Error:|Terminating app|NSInvalidArgumentException" app.log | head -60 || true
+          if xcrun simctl spawn "$DEVICE" launchctl list | grep -q "com.hikerpro.app"; then
+            echo "App is still running after 40s"
+          else
+            echo "App is NOT running (crashed or exited)"
+            ls ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -i hikerpro && head -80 ~/Library/Logs/DiagnosticReports/*HikerPro* || true
+            exit 1
+          fi
+
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ios-build-log
-          path: ios/build.log
+          path: |
+            ios/build.log
+            ios/app.log
+            ios/launch.png
           if-no-files-found: ignore
