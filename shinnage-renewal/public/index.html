@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta property="og:title" content="SHINNAGE 신나게">
+<meta property="og:description" content="세상의 모든 재능이 하나의 무대로. 링크 하나로 무대에 오르고, 꽃으로 재능을 발견하세요.">
+<script src="config.js"></script>
+<title>SHINNAGE 신나게</title>
+<meta name="description" content="세상의 모든 재능이 하나의 무대로. YouTube 링크 하나로 무대에 오르고, 꽃을 건네며 재능을 발견하는 SHINNAGE.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800;900&family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<style>
+/* Layout: 어두운 무대 위 한 줄기 조명. 넓은 여백과 얇은 선, 핑크는 행동(CTA)에만, 시안은 정보 표식에만 씁니다. */
+:root {
+  --ink: #0b0b0d;          /* 무대 바닥 */
+  --stage: #141418;        /* 카드 면 */
+  --stage-2: #1b1b21;
+  --line: rgba(244, 244, 242, 0.12);
+  --line-strong: rgba(244, 244, 242, 0.28);
+  --paper: #f4f4f2;        /* 본문 */
+  --muted: #a9a9b3;
+  --pink: #e6007e;         /* 브랜드: 행동 */
+  --pink-text: #ff4da6;    /* 어두운 바탕 위 핑크 글자 */
+  --cyan: #22e0ee;         /* 브랜드: 표식 */
+  --display: 'Archivo', 'Arial Black', system-ui, sans-serif;
+  --kr: 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  --gutter: clamp(16px, 4vw, 56px);
+  --max: 1180px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--kr);
+  font-size: 16px;
+  line-height: 1.7;
+  word-break: keep-all;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+h1, h2, h3, p { margin: 0; }
+h1, h2, h3 { text-wrap: balance; letter-spacing: -0.035em; }
+.wrap { max-width: var(--max); margin: 0 auto; padding-inline: var(--gutter); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+
+/* ── Nav ── */
+.nav {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30;
+  background: rgba(11, 11, 13, 0.82);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+.nav-in { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 64px; }
+.logo { display: flex; align-items: baseline; gap: 8px; font-family: var(--display); font-weight: 900; font-size: 19px; letter-spacing: -0.02em; }
+.logo small { font-family: var(--kr); font-weight: 500; font-size: 12px; color: var(--muted); letter-spacing: 0; }
+.logo-dot { width: 8px; height: 8px; background: var(--pink); border-radius: 50%; align-self: center; }
+.nav-links { display: flex; align-items: center; gap: 28px; font-size: 14px; color: var(--muted); }
+.nav-links a:hover { color: var(--paper); }
+.nav-cta { color: var(--paper) !important; border: 1px solid var(--line-strong); padding: 8px 16px; border-radius: 999px; }
+.nav-cta:hover { border-color: var(--paper); }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 52px; padding: 0 24px; border-radius: 999px;
+  font: 700 15px/1 var(--kr); cursor: pointer; border: 1px solid transparent;
+  transition: transform .15s ease, background-color .15s ease, border-color .15s ease;
+}
+.btn svg { transition: transform .15s ease; }
+.btn:hover svg { transform: translateX(3px); }
+.btn-pink { background: var(--pink); color: #fff; }
+.btn-pink:hover { background: #ff1592; }
+.btn-line { border-color: var(--line-strong); color: var(--paper); background: transparent; }
+.btn-line:hover { border-color: var(--paper); }
+
+/* ── Hero ── */
+.hero { position: relative; overflow: hidden; border-bottom: 1px solid var(--line); }
+.hero::before { /* 무대 조명 */
+  content: ""; position: absolute; inset: -20% -10% auto 20%; height: 140%;
+  background: radial-gradient(ellipse 40% 55% at 50% 0%, rgba(244, 244, 242, 0.10), transparent 70%),
+              radial-gradient(ellipse 30% 40% at 70% 10%, rgba(230, 0, 126, 0.16), transparent 70%);
+  pointer-events: none;
+}
+.hero-in { position: relative; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: clamp(32px, 5vw, 72px); align-items: center; padding-block: clamp(56px, 9vw, 120px); }
+.eyebrow { font: 800 12px/1.4 var(--display); letter-spacing: .22em; color: var(--cyan); text-transform: uppercase; }
+.hero h1 { margin-top: 20px; font-weight: 900; font-size: clamp(40px, 6.6vw, 84px); line-height: 1.08; }
+.hero h1 em { font-style: normal; color: var(--pink-text); }
+.hero-lead { margin-top: 24px; max-width: 34em; font-size: clamp(16px, 1.6vw, 19px); color: var(--muted); }
+.hero-lead strong { color: var(--paper); font-weight: 700; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 36px; }
+.hero-note { margin-top: 18px; font-size: 13px; color: var(--muted); }
+
+/* 이번 달 무대: 공연 티켓 */
+.ticket { position: relative; display: grid; grid-template-rows: auto auto; background: var(--paper); color: var(--ink); border-radius: 18px; overflow: hidden; transform: rotate(1.5deg); box-shadow: 0 30px 80px rgba(0, 0, 0, .55); }
+.ticket-main { padding: 26px 26px 22px; }
+.ticket-top { display: flex; justify-content: space-between; gap: 12px; font: 800 11px/1.3 var(--display); letter-spacing: .18em; color: #55555e; }
+.ticket h2 { margin-top: 18px; font-size: clamp(28px, 3vw, 36px); font-weight: 900; line-height: 1.15; }
+.ticket p { margin-top: 10px; font-size: 14px; color: #4a4a52; line-height: 1.6; }
+.ticket-stub { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 2px dashed #c9c9cc; background: #ebebe8; }
+.ticket-stub::before, .ticket-stub::after { content: ""; position: absolute; top: -12px; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); }
+.ticket-stub::before { left: -11px; } .ticket-stub::after { right: -11px; }
+.stub-cell { padding: 16px 18px; display: grid; gap: 2px; }
+.stub-cell + .stub-cell { border-left: 1px solid #d6d6d8; }
+.stub-k { font: 700 10px/1.3 var(--display); letter-spacing: .16em; color: #6a6a72; }
+.stub-v { font: 900 20px/1.2 var(--display); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.stub-v.pink { color: var(--pink); }
+
+/* ── Sections ── */
+.section { padding-block: clamp(72px, 10vw, 128px); border-bottom: 1px solid var(--line); }
+.sec-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr); gap: 24px 48px; align-items: end; margin-bottom: clamp(36px, 5vw, 56px); }
+.sec-head h2 { margin-top: 14px; font-size: clamp(30px, 4vw, 50px); font-weight: 900; line-height: 1.18; }
+.sec-head p { color: var(--muted); font-size: 16px; max-width: 32em; }
+
+/* 두 가지 참여 */
+.roles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.role { display: flex; flex-direction: column; gap: 18px; min-width: 0; padding: clamp(26px, 3.4vw, 40px); background: var(--stage); border: 1px solid var(--line); border-radius: 20px; transition: border-color .2s ease, transform .2s ease; }
+.role:hover { border-color: var(--line-strong); transform: translateY(-3px); }
+.role-tag { display: inline-flex; align-self: flex-start; align-items: center; gap: 8px; font: 800 11px/1 var(--display); letter-spacing: .18em; padding: 7px 10px; border-radius: 999px; border: 1px solid currentColor; }
+.role-creator .role-tag { color: var(--pink-text); }
+.role-eval .role-tag { color: var(--cyan); }
+.role h3 { font-size: clamp(24px, 2.6vw, 32px); font-weight: 900; line-height: 1.25; }
+.role > p { color: var(--muted); }
+.role ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: 15px; }
+.role li { display: flex; gap: 10px; align-items: baseline; }
+.role li::before { content: ""; flex: 0 0 6px; height: 6px; border-radius: 50%; background: var(--line-strong); transform: translateY(-2px); }
+.role .btn { align-self: flex-start; margin-top: auto; }
+
+/* 참여 흐름 (실제 순서) */
+.flow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); }
+.flow-step { padding: 28px 28px 0 0; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.flow-step + .flow-step { padding-left: 28px; border-left: 1px solid var(--line); }
+.flow-no { font: 900 13px/1 var(--display); color: var(--cyan); letter-spacing: .1em; }
+.flow-step h3 { font-size: 22px; font-weight: 900; }
+.flow-step p { color: var(--muted); font-size: 15px; }
+
+/* 시즌 캘린더 */
+.season { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.month { position: relative; display: grid; gap: 6px; align-content: start; min-height: 132px; padding: 16px; border-radius: 14px; background: var(--stage); border: 1px solid var(--line); min-width: 0; }
+.month-no { font: 900 26px/1 var(--display); font-variant-numeric: tabular-nums; color: var(--line-strong); }
+.month-name { font-weight: 700; font-size: 15px; line-height: 1.4; }
+.month-genre { font-size: 12px; color: var(--muted); }
+.month.is-now { background: var(--pink); border-color: var(--pink); color: #fff; }
+.month.is-now .month-no { color: #fff; }
+.month.is-now .month-genre { color: rgba(255, 255, 255, .85); }
+.month.is-now::after { content: "NOW"; position: absolute; top: 14px; right: 14px; font: 800 10px/1 var(--display); letter-spacing: .16em; padding: 5px 7px; border-radius: 999px; background: #fff; color: var(--pink); }
+.season-note { margin-top: 18px; font-size: 14px; color: var(--muted); }
+
+/* 장르 */
+.genres { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.genre { position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; min-height: 220px; padding: 22px; border-radius: 18px; border: 1px solid var(--line); background: var(--stage); min-width: 0; isolation: isolate; }
+.genre::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(120% 90% at 100% 0%, var(--tint), transparent 60%); opacity: .55; transition: opacity .25s ease; }
+.genre:hover::before { opacity: .9; }
+.genre-word { position: absolute; top: 14px; left: 18px; right: 18px; font: 900 clamp(34px, 4vw, 52px)/0.95 var(--display); letter-spacing: -0.03em; color: transparent; -webkit-text-stroke: 1px var(--line-strong); }
+.genre-ko { font-size: 20px; font-weight: 900; }
+.genre-copy { font-size: 14px; color: var(--muted); }
+.eq { display: flex; align-items: flex-end; gap: 3px; height: 18px; }
+.eq i { width: 3px; background: var(--paper); border-radius: 2px; animation: eq 1.1s ease-in-out infinite; }
+.eq i:nth-child(2) { animation-delay: -.3s; } .eq i:nth-child(3) { animation-delay: -.6s; } .eq i:nth-child(4) { animation-delay: -.9s; }
+@keyframes eq { 0%, 100% { height: 30%; } 50% { height: 100%; } }
+
+/* 꽃 평판 */
+.rep { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(28px, 5vw, 64px); align-items: center; }
+.ladder { list-style: none; margin: 28px 0 0; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--line); }
+.ladder li { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.ladder svg { width: 28px; height: 28px; }
+.ladder b { font-size: 16px; }
+.ladder span { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.card-sample { padding: 28px; border-radius: 20px; background: var(--stage); border: 1px solid var(--line); display: grid; gap: 22px; }
+.sample-badge { justify-self: start; font: 800 10px/1 var(--display); letter-spacing: .18em; padding: 6px 9px; border-radius: 999px; border: 1px dashed var(--line-strong); color: var(--muted); }
+.who { display: flex; align-items: center; gap: 14px; }
+.avatar { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: linear-gradient(135deg, var(--cyan), var(--pink)); font: 900 20px/1 var(--display); color: var(--ink); }
+.who b { display: block; font-size: 18px; }
+.who small { color: var(--muted); font-size: 13px; }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.stat { padding: 14px; border-radius: 12px; background: var(--stage-2); display: grid; gap: 4px; min-width: 0; }
+.stat-k { font-size: 12px; color: var(--muted); }
+.stat-v { font: 900 24px/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.meter { height: 6px; border-radius: 99px; background: var(--stage-2); overflow: hidden; }
+.meter i { display: block; height: 100%; width: 62%; background: linear-gradient(90deg, var(--cyan), var(--pink)); border-radius: inherit; }
+.meter-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: -12px; }
+
+/* 월간 레터 */
+.letter { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(28px, 5vw, 64px); align-items: start; }
+.letter h2 { margin-top: 14px; font-size: clamp(30px, 4vw, 48px); font-weight: 900; line-height: 1.18; }
+.letter-lead { margin-top: 18px; color: var(--muted); max-width: 30em; }
+.letter-points { margin: 24px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; font-size: 15px; }
+.letter-points li::before { content: "—"; color: var(--cyan); margin-right: 10px; }
+.form { display: grid; gap: 16px; padding: clamp(24px, 3vw, 34px); border-radius: 20px; background: var(--stage); border: 1px solid var(--line); }
+.field { display: grid; gap: 8px; }
+.field > span { font-size: 13px; font-weight: 700; color: var(--muted); }
+.input { width: 100%; min-height: 50px; padding: 0 16px; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--ink); color: var(--paper); font: 500 16px var(--kr); }
+.input::placeholder { color: #6e6e78; }
+.input:focus { outline: none; border-color: var(--cyan); }
+.seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; border: 0; padding: 0; margin: 0; }
+.seg legend { font-size: 13px; font-weight: 700; color: var(--muted); margin-bottom: 8px; }
+.seg label { position: relative; }
+.seg input { position: absolute; opacity: 0; inset: 0; }
+.seg span { display: grid; place-items: center; min-height: 46px; border-radius: 12px; border: 1px solid var(--line-strong); font-size: 14px; font-weight: 700; cursor: pointer; text-align: center; padding: 0 6px; }
+.seg input:checked + span { background: var(--paper); color: var(--ink); border-color: var(--paper); }
+.seg input:focus-visible + span { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.agree { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--muted); line-height: 1.6; }
+.agree input { margin-top: 4px; accent-color: var(--pink); }
+.form .btn { width: 100%; }
+.form-msg { font-size: 14px; min-height: 1.6em; }
+.form-msg.ok { color: var(--cyan); }
+.form-msg.err { color: var(--pink-text); }
+
+/* FAQ */
+.faq { display: grid; border-top: 1px solid var(--line); }
+.faq details { border-bottom: 1px solid var(--line); }
+.faq summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 22px 0; font-size: 18px; font-weight: 700; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; font: 500 26px/1 var(--display); color: var(--muted); transition: transform .2s ease; }
+.faq details[open] summary::after { transform: rotate(45deg); }
+.faq details p { padding: 0 0 24px; color: var(--muted); max-width: 46em; }
+
+/* Footer */
+.foot { padding-block: 48px; color: var(--muted); font-size: 13px; }
+.foot-in { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; }
+.foot .logo { color: var(--paper); }
+
+/* ── Responsive ── */
+@media (max-width: 960px) {
+  .hero-in, .rep, .letter { grid-template-columns: minmax(0, 1fr); }
+  .ticket { max-width: 460px; transform: rotate(0); }
+  .sec-head { grid-template-columns: minmax(0, 1fr); }
+  .season { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .genres { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .nav-links a:not(.nav-cta) { display: none; }
+}
+@media (max-width: 680px) {
+  .roles, .flow { grid-template-columns: minmax(0, 1fr); }
+  .flow-step, .flow-step + .flow-step { padding: 24px 0; border-left: 0; border-bottom: 1px solid var(--line); }
+  .season { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .genres { grid-template-columns: minmax(0, 1fr); }
+  .genre { min-height: 180px; }
+  .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .stat-v { font-size: 20px; }
+  .seg { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+  html { scroll-behavior: auto; }
+}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a href="#top" class="logo" aria-label="SHINNAGE 홈"><span class="logo-dot" aria-hidden="true"></span>SHINNAGE<small>신나게</small></a>
+    <nav class="nav-links" aria-label="주요 메뉴">
+      <a href="#season">이달의 무대</a>
+      <a href="#how">참여 방법</a>
+      <a href="#flower">꽃 평판</a>
+      <a href="#letter">월간 레터</a>
+      <a href="/creator/start" class="nav-cta">무대 올리기</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <!-- Hero -->
+  <section class="hero">
+    <div class="wrap hero-in">
+      <div>
+        <p class="eyebrow">All talents · One stage</p>
+        <h1>세상의 모든 재능이<br>하나의 <em>무대로.</em></h1>
+        <p class="hero-lead">
+          노래, 춤, 연주, 우리 가락까지. <strong>YouTube 링크 하나</strong>로 무대에 오르고,
+          무대를 본 사람은 <strong>꽃</strong>으로 응원합니다. 남는 시간이 누군가의 무대가 되고, 좋은 무대를 알아보는 눈도 기록됩니다.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-pink" href="/creator/start">내 무대 올리기
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+          <a class="btn btn-line" href="/performances">꽃 건네러 가기</a>
+        </div>
+        <p class="hero-note">가입비·참가비 없음 · 영상 업로드 없이 링크만 · 평가는 누구나</p>
+      </div>
+
+      <aside class="ticket" aria-label="이번 달 무대 안내">
+        <div class="ticket-main">
+          <div class="ticket-top"><span id="t-season">SEASON 10</span><span id="t-month">OCT 2026</span></div>
+          <h2 id="t-title">가을 버스킹</h2>
+          <p id="t-desc">거리, 공원, 옥상. 야외에서 부른 노래와 연주라면 무엇이든 좋아요.</p>
+        </div>
+        <div class="ticket-stub">
+          <div class="stub-cell"><span class="stub-k">접수 마감</span><span class="stub-v pink" id="t-dday">D-29</span></div>
+          <div class="stub-cell"><span class="stub-k">장르</span><span class="stub-v" id="t-genre">ALL</span></div>
+          <div class="stub-cell"><span class="stub-k">발표</span><span class="stub-v" id="t-result">11.07</span></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- 두 가지 참여 -->
+  <section class="section" id="how">
+    <div class="wrap">
+      <div class="sec-head">
+        <div>
+          <p class="eyebrow">Two ways in</p>
+          <h2>무대에 서도 좋고,<br>객석에 앉아도 좋아요.</h2>
+        </div>
+        <p>SHINNAGE에서는 공연하는 사람과 알아보는 사람이 함께 성장합니다. 재능이 없어도 괜찮아요. 좋은 무대를 알아보는 것도 재능이니까요.</p>
+      </div>
+
+      <div class="roles">
+        <article class="role role-creator">
+          <span class="role-tag">CREATOR</span>
+          <h3>내 공연을 무대에 올려요</h3>
+          <p>이미 올린 YouTube 영상이 있다면 3분이면 충분해요.</p>
+          <ul>
+            <li>영상 파일 업로드 없이 링크만 연결</li>
+            <li>매달 주제가 바뀌는 시즌 무대에 참가</li>
+            <li>꽃과 전문가 코멘트로 받는 피드백</li>
+          </ul>
+          <a class="btn btn-pink" href="/creator/start">무대 올리기</a>
+        </article>
+        <article class="role role-eval">
+          <span class="role-tag">EVALUATOR</span>
+          <h3>좋은 무대에 꽃을 건네요</h3>
+          <p>출퇴근길 5분, 한 무대를 보고 꽃 한 송이를 건네 보세요.</p>
+          <ul>
+            <li>한 번에 한 무대, 부담 없는 평가</li>
+            <li>내 안목이 꽃 평판으로 쌓여요</li>
+            <li>꽃을 많이 받은 무대를 내가 먼저 발견</li>
+          </ul>
+          <a class="btn btn-line" href="/performances">무대 둘러보기</a>
+        </article>
+      </div>
+
+      <div class="flow" style="margin-top: clamp(48px, 6vw, 72px);">
+        <div class="flow-step"><span class="flow-no">STEP 1</span><h3>링크 연결</h3><p>공연 전체 영상의 YouTube 주소를 붙여 넣어요. 공개 또는 일부 공개면 됩니다.</p></div>
+        <div class="flow-step"><span class="flow-no">STEP 2</span><h3>공개 평가</h3><p>한 달 동안 누구나 무대를 보고 꽃을 건네요. 전문가 평가도 함께 붙어요.</p></div>
+        <div class="flow-step"><span class="flow-no">STEP 3</span><h3>이달의 무대 발표</h3><p>다음 달 첫 주에 발표하고, 월간 레터와 SNS로 더 많은 사람에게 소개해요.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 시즌 캘린더 -->
+  <section class="section" id="season">
+    <div class="wrap">
+      <div class="sec-head">
+        <div>
+          <p class="eyebrow">Monthly season</p>
+          <h2>매달 새로운 무대가 열려요.</h2>
+        </div>
+        <p>한 달에 하나의 주제. 이번 달을 놓쳐도 다음 달 무대가 기다려요. 지난 무대는 모두 아카이브에 남습니다.</p>
+      </div>
+      <div class="season" id="season-grid" role="list"></div>
+      <p class="season-note">매달 말일 자정에 접수를 마감하고, 다음 달 7일에 이달의 무대를 발표합니다.</p>
+    </div>
+  </section>
+
+  <!-- 장르 -->
+  <section class="section">
+    <div class="wrap">
+      <div class="sec-head">
+        <div>
+          <p class="eyebrow">Every genre</p>
+          <h2>어떤 무대든 여기서 시작돼요.</h2>
+        </div>
+        <p>장르를 고르기 어렵다면 ‘기타’로 올려 주세요. 비트박스, 마술, 뮤지컬도 환영합니다.</p>
+      </div>
+      <div class="genres">
+        <div class="genre" style="--tint: rgba(230,0,126,.55)"><span class="genre-word" aria-hidden="true">VOCAL</span><div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></div><p class="genre-ko">보컬</p><p class="genre-copy">마음을 움직이는 목소리</p></div>
+        <div class="genre" style="--tint: rgba(34,224,238,.45)"><span class="genre-word" aria-hidden="true">DANCE</span><p class="genre-ko">댄스</p><p class="genre-copy">국경 없는 움직임</p></div>
+        <div class="genre" style="--tint: rgba(244,244,242,.25)"><span class="genre-word" aria-hidden="true">CLASSIC</span><div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></div><p class="genre-ko">클래식</p><p class="genre-copy">시간을 견딘 재능을 위한 무대</p></div>
+        <div class="genre" style="--tint: rgba(230,0,126,.35)"><span class="genre-word" aria-hidden="true">GUGAK</span><p class="genre-ko">전통예술</p><p class="genre-copy">우리 가락, 새로운 무대</p></div>
+        <div class="genre" style="--tint: rgba(34,224,238,.30)"><span class="genre-word" aria-hidden="true">BAND</span><div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></div><p class="genre-ko">밴드·그룹</p><p class="genre-copy">함께 만든 소리</p></div>
+        <div class="genre" style="--tint: rgba(230,0,126,.45)"><span class="genre-word" aria-hidden="true">STREET</span><p class="genre-ko">힙합·스트릿</p><p class="genre-copy">경계 없는 에너지</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 꽃 평판 -->
+  <section class="section" id="flower">
+    <div class="wrap rep">
+      <div>
+        <p class="eyebrow">Flower reputation</p>
+        <h2 style="margin-top:14px; font-size: clamp(30px, 4vw, 48px); font-weight: 900; line-height: 1.18;">좋은 무대를 알아본<br>당신의 안목도 자랍니다.</h2>
+        <p style="margin-top:18px; color: var(--muted); max-width: 30em;">건넨 꽃이 나중에 많은 사랑을 받은 무대에 먼저 닿았다면, 당신의 꽃 평판이 올라가요. 평판이 쌓이면 꽃 한 송이의 무게도 커집니다.</p>
+        <ol class="ladder" aria-label="꽃 평판 단계">
+          <li><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 28V16" stroke="#a9a9b3" stroke-width="2" fill="none"/><path d="M16 18c-5 0-8-3-8-8 5 0 8 3 8 8z" fill="#22e0ee"/></svg><b>새싹</b><span>꽃 1송이부터</span></li>
+          <li><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 28V14" stroke="#a9a9b3" stroke-width="2" fill="none"/><ellipse cx="16" cy="10" rx="5" ry="7" fill="#e6007e"/></svg><b>봉오리</b><span>꽃 30송이 · 발견 1회</span></li>
+          <li><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 28V16" stroke="#a9a9b3" stroke-width="2" fill="none"/><g fill="#e6007e"><circle cx="16" cy="7" r="4.5"/><circle cx="10.5" cy="11.5" r="4.5"/><circle cx="21.5" cy="11.5" r="4.5"/><circle cx="13" cy="16.5" r="4.5"/><circle cx="19" cy="16.5" r="4.5"/></g><circle cx="16" cy="12" r="3" fill="#f4f4f2"/></svg><b>꽃</b><span>꽃 100송이 · 발견 5회</span></li>
+          <li><svg viewBox="0 0 32 32" aria-hidden="true"><g fill="#e6007e"><circle cx="16" cy="6" r="5"/><circle cx="8" cy="12" r="5"/><circle cx="24" cy="12" r="5"/><circle cx="11" cy="21" r="5"/><circle cx="21" cy="21" r="5"/></g><circle cx="16" cy="14" r="4" fill="#22e0ee"/></svg><b>만개</b><span>시즌 상위 발견자</span></li>
+        </ol>
+      </div>
+
+      <div class="card-sample" aria-label="평가자 카드 예시">
+        <span class="sample-badge">예시 화면</span>
+        <div class="who"><span class="avatar" aria-hidden="true">J</span><div><b>밤산책러</b><small>평가자 · 봉오리 단계</small></div></div>
+        <div class="stats">
+          <div class="stat"><span class="stat-k">건넨 꽃</span><span class="stat-v">48</span></div>
+          <div class="stat"><span class="stat-k">먼저 발견</span><span class="stat-v">3</span></div>
+          <div class="stat"><span class="stat-k">함께한 시즌</span><span class="stat-v">4</span></div>
+        </div>
+        <div class="meter" role="img" aria-label="꽃 단계까지 62%"><i></i></div>
+        <div class="meter-label"><span>봉오리</span><span>꽃까지 62%</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 월간 레터 -->
+  <section class="section" id="letter">
+    <div class="wrap letter">
+      <div>
+        <p class="eyebrow">Monthly letter</p>
+        <h2>한 달에 한 번,<br>이달의 무대를 보내 드려요.</h2>
+        <p class="letter-lead">자주 들르지 않아도 괜찮아요. 매달 7일, 꽃을 가장 많이 받은 무대와 다음 달 주제를 메일 한 통으로 정리해 드립니다.</p>
+        <ul class="letter-points">
+          <li>이달의 무대 3편과 발견자 이야기</li>
+          <li>다음 시즌 주제와 접수 마감일</li>
+          <li>광고 없음, 언제든 한 번에 수신 거부</li>
+        </ul>
+      </div>
+      <form class="form" id="letter-form" novalidate>
+        <label class="field" for="email"><span>이메일</span>
+          <input class="input" id="email" name="email" type="email" inputmode="email" autocomplete="email" placeholder="name@example.com" required>
+        </label>
+        <fieldset class="seg">
+          <legend>관심 있는 참여</legend>
+          <label for="r-creator"><input type="radio" id="r-creator" name="role" value="CREATOR"><span>무대에 서기</span></label>
+          <label for="r-eval"><input type="radio" id="r-eval" name="role" value="EVALUATOR" checked><span>꽃 건네기</span></label>
+          <label for="r-both"><input type="radio" id="r-both" name="role" value="BOTH"><span>둘 다</span></label>
+        </fieldset>
+        <label class="agree" for="agree"><input type="checkbox" id="agree" name="agree" required><span>[필수] 월간 레터 발송을 위한 이메일 수집·이용에 동의합니다. 수신 거부 시 즉시 파기합니다.</span></label>
+        <button class="btn btn-pink" type="submit" id="letter-btn">월간 레터 받기</button>
+        <p class="form-msg" id="letter-msg" role="status" aria-live="polite"></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section">
+    <div class="wrap">
+      <div class="sec-head"><div><p class="eyebrow">FAQ</p><h2>자주 묻는 질문</h2></div></div>
+      <div class="faq">
+        <details><summary>참가비나 이용료가 있나요?</summary><p>없습니다. 무대를 올리는 것도, 꽃을 건네는 것도 무료예요.</p></details>
+        <details><summary>영상은 어디에 올리나요?</summary><p>본인 YouTube 채널에 올린 영상의 링크만 연결하면 됩니다. 쇼츠나 짧은 클립보다는 공연 전체 영상을 권해요. 공개 또는 일부 공개 상태여야 하고, 외부 재생이 허용되어 있어야 합니다.</p></details>
+        <details><summary>누가 평가하나요?</summary><p>누구나 꽃을 건넬 수 있고, 장르별 전문가가 함께 평가합니다. 꽃의 무게는 건넨 사람의 꽃 평판에 따라 달라져요.</p></details>
+        <details><summary>이번 달 마감을 놓쳤어요.</summary><p>다음 달 시즌에 다시 참가할 수 있어요. 등록한 무대는 시즌이 끝나도 아카이브에 남고 계속 꽃을 받을 수 있습니다.</p></details>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-in">
+    <a href="#top" class="logo"><span class="logo-dot" aria-hidden="true"></span>SHINNAGE<small>신나게</small></a>
+    <span>Your Talent. A Bigger Tomorrow.</span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  // 12개월 시즌 주제. 운영자가 이 배열만 고치면 홈페이지 전체가 바뀝니다.
+  var SEASONS = {
+    1:  { title: '새해 첫 무대',       genre: '자유 장르',    tag: 'ALL',     desc: '올해 처음 부른 노래, 처음 춘 춤. 무엇이든 첫 무대를 올려 주세요.' },
+    2:  { title: '스트릿 나이트',       genre: '힙합·스트릿',  tag: 'STREET',  desc: '랩, 브레이킹, 스트릿 댄스. 경계 없는 에너지를 보여 주세요.' },
+    3:  { title: '우리 가락',          genre: '전통예술',     tag: 'GUGAK',   desc: '판소리, 민요, 국악기 연주, 퓨전 국악까지 환영합니다.' },
+    4:  { title: '봄 어쿠스틱',        genre: '보컬·연주',    tag: 'ACOUSTIC', desc: '기타 한 대, 목소리 하나. 담백한 어쿠스틱 무대를 기다려요.' },
+    5:  { title: '함께라서 무대',      genre: '가족·친구',    tag: 'ALL',     desc: '가족, 친구, 동료와 함께 만든 무대라면 무엇이든 좋아요.' },
+    6:  { title: '춤추는 여름',        genre: '댄스',         tag: 'DANCE',   desc: '장르 불문, 몸으로 표현하는 모든 무대를 모읍니다.' },
+    7:  { title: '합주의 계절',        genre: '밴드·그룹',    tag: 'BAND',    desc: '합주실, 동아리방, 차고에서 함께 만든 소리를 들려주세요.' },
+    8:  { title: '한여름 밤의 보컬',   genre: '보컬',         tag: 'VOCAL',   desc: '더위를 잊게 할 목소리. 커버도 자작곡도 좋아요.' },
+    9:  { title: '올해의 꽃 결산',     genre: '연간 결산',    tag: 'AWARDS',  desc: '한 해 동안 꽃을 가장 많이 받은 무대와 발견자를 소개합니다.' },
+    10: { title: '가을 버스킹',        genre: '야외 공연',    tag: 'BUSKING', desc: '거리, 공원, 옥상. 야외에서 부른 노래와 연주라면 무엇이든 좋아요.' },
+    11: { title: '클래식의 밤',        genre: '클래식',       tag: 'CLASSIC', desc: '독주, 실내악, 성악. 시간을 견딘 음악을 당신의 해석으로.' },
+    12: { title: '연말 합창',          genre: '합창·밴드',    tag: 'CHOIR',   desc: '한 해를 마무리하는 함께 부르는 노래를 모읍니다.' }
+  };
+  var MON = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  var LAUNCH = { y: 2026, m: 1 }; // 시즌 번호 기준 (2026년 1월 = SEASON 1)
+
+  var now = new Date();
+  var y = now.getFullYear(), m = now.getMonth() + 1;
+  var s = SEASONS[m];
+  var end = new Date(y, m, 0, 23, 59, 59);
+  var dday = Math.max(0, Math.ceil((end - now) / 86400000));
+  var nextM = m === 12 ? 1 : m + 1;
+  var seasonNo = (y - LAUNCH.y) * 12 + (m - LAUNCH.m) + 1;
+
+  function set(id, text) { var el = document.getElementById(id); if (el) el.textContent = text; }
+  set('t-season', 'SEASON ' + seasonNo);
+  set('t-month', MON[m - 1] + ' ' + y);
+  set('t-title', s.title);
+  set('t-desc', s.desc);
+  set('t-dday', dday === 0 ? 'D-DAY' : 'D-' + dday);
+  set('t-genre', s.tag);
+  set('t-result', String(nextM).padStart(2, '0') + '.07');
+
+  // 지금부터 12개월을 보여 줍니다.
+  var grid = document.getElementById('season-grid');
+  for (var i = 0; i < 12; i++) {
+    var mm = ((m - 1 + i) % 12) + 1;
+    var it = SEASONS[mm];
+    var cell = document.createElement('div');
+    cell.className = 'month' + (i === 0 ? ' is-now' : '');
+    cell.setAttribute('role', 'listitem');
+    cell.innerHTML = '<span class="month-no">' + String(mm).padStart(2, '0') + '</span>' +
+      '<span class="month-name"></span><span class="month-genre"></span>';
+    cell.querySelector('.month-name').textContent = it.title;
+    cell.querySelector('.month-genre').textContent = it.genre;
+    grid.appendChild(cell);
+  }
+
+  // 월간 레터 신청. config.js에 Supabase 정보가 있으면 저장하고, 없으면 안내만 합니다.
+  var cfg = window.SHINNAGE_CONFIG || {};
+  var form = document.getElementById('letter-form');
+  var msg = document.getElementById('letter-msg');
+  var btn = document.getElementById('letter-btn');
+  function say(text, kind) { msg.textContent = text; msg.className = 'form-msg ' + (kind || ''); }
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var email = form.email.value.trim();
+    var role = (form.querySelector('input[name="role"]:checked') || {}).value || 'EVALUATOR';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { say('이메일 주소를 다시 확인해 주세요. 예: name@example.com', 'err'); form.email.focus(); return; }
+    if (!form.agree.checked) { say('필수 동의에 체크해 주세요.', 'err'); return; }
+
+    if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) {
+      say('미리보기 화면이라 실제로 저장되지는 않았어요. 배포 시 config.js를 설정하면 신청이 저장됩니다.', 'ok');
+      return;
+    }
+    btn.disabled = true; btn.textContent = '신청 중…';
+    fetch(cfg.supabaseUrl + '/rest/v1/letter_subscribers', {
+      method: 'POST',
+      headers: { 'apikey': cfg.supabaseAnonKey, 'Authorization': 'Bearer ' + cfg.supabaseAnonKey, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ email: email, role: role, consent_version: '1.0' })
+    }).then(function (res) {
+      if (res.ok || res.status === 409) { say('신청되었어요. 다음 달 7일에 첫 레터를 보내 드릴게요.', 'ok'); form.reset(); }
+      else { throw new Error(String(res.status)); }
+    }).catch(function () {
+      say('지금은 신청을 저장하지 못했어요. 잠시 후 다시 시도해 주세요.', 'err');
+    }).then(function () { btn.disabled = false; btn.textContent = '월간 레터 받기'; });
+  });
+})();
+</script>
+</body>
+</html>

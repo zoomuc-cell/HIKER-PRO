@@ -1,0 +1,28 @@
+name: SHINNAGE keep-alive
+
+# Supabase 무료 플랜은 7일간 활동이 없으면 프로젝트를 일시정지합니다.
+# 사흘마다 heartbeat 테이블을 한 번 읽어 정지를 막습니다.
+# 필요한 저장소 Secrets: SUPABASE_URL, SUPABASE_ANON_KEY
+on:
+  schedule:
+    - cron: '17 3 */3 * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "Secrets not set; skipping."
+            exit 0
+          fi
+          curl -fsS --retry 3 --retry-delay 10 \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            "$SUPABASE_URL/rest/v1/heartbeat?select=id&limit=1"
