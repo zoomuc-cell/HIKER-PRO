@@ -4,7 +4,7 @@
 export default {
   async scheduled(_event, env) {
     const res = await fetch(`${env.SUPABASE_URL}/rest/v1/heartbeat?select=id&limit=1`, {
-      headers: { apikey: env.SUPABASE_ANON_KEY, Authorization: `Bearer ${env.SUPABASE_ANON_KEY}` },
+      headers: { apikey: env.SUPABASE_ANON_KEY },
     });
     if (!res.ok) throw new Error(`keep-alive failed: ${res.status}`);
   },

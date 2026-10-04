@@ -541,7 +541,7 @@ h1, h2, h3 { text-wrap: balance; letter-spacing: -0.035em; }
     btn.disabled = true; btn.textContent = '신청 중…';
     fetch(cfg.supabaseUrl + '/rest/v1/letter_subscribers', {
       method: 'POST',
-      headers: { 'apikey': cfg.supabaseAnonKey, 'Authorization': 'Bearer ' + cfg.supabaseAnonKey, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      headers: { 'apikey': cfg.supabaseAnonKey, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
       body: JSON.stringify({ email: email, role: role, consent_version: '1.0', source: source() })
     }).then(function (res) {
       if (res.ok || res.status === 409) { say('신청되었어요. 다음 달 7일에 첫 레터를 보내 드릴게요.', 'ok'); form.reset(); }
