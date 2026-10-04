@@ -54,7 +54,9 @@
 ## 6. 배포 방법
 
 1. **DB 깨우기**: Supabase 대시보드에서 일시정지된 프로젝트를 Restore합니다.
-2. **테이블 만들기**: SQL Editor에서 `supabase/schema.sql`을 실행합니다. (레터 신청자 테이블은 '추가'만 가능하도록 RLS가 설정됨)
+2. **테이블 만들기**: SQL Editor에서 `supabase/schema.sql` → `supabase/admin.sql` 순서로 실행합니다. (2026-10-04 적용 완료)
+   - 보안 조치: `supabase/security_move_postgis.sql`도 한 번 실행합니다. PostGIS 좌표계 표를 외부에서 수정할 수 없게 옮깁니다.
+   - 가입자 관리 방법은 `ADMIN.md`를 보세요.
 3. **설정**: `public/config.js`에 Supabase URL과 anon key를 넣습니다.
 4. **호스팅**: Cloudflare Pages에서 이 저장소를 연결하고, 빌드 명령 없이 출력 폴더를 `shinnage-renewal/public`으로 지정합니다.
 5. **keep-alive**: 아래 둘 중 하나를 고릅니다.

@@ -524,6 +524,19 @@ h1, h2, h3 { text-wrap: balance; letter-spacing: -0.035em; }
   var btn = document.getElementById('letter-btn');
   function say(text, kind) { msg.textContent = text; msg.className = 'form-msg ' + (kind || ''); }
 
+  // 유입 경로: ?from=insta 또는 ?utm_source=... 링크, 없으면 들어온 사이트 주소
+  function source() {
+    try {
+      var q = new URLSearchParams(location.search);
+      var v = q.get('from') || q.get('utm_source');
+      if (!v && document.referrer) {
+        var h = new URL(document.referrer).hostname.replace(/^www\./, '');
+        if (h && h !== location.hostname) v = h;
+      }
+      return v ? v.toLowerCase().slice(0, 60) : null;
+    } catch (_) { return null; }
+  }
+
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     var email = form.email.value.trim();
@@ -539,7 +552,7 @@ h1, h2, h3 { text-wrap: balance; letter-spacing: -0.035em; }
     fetch(cfg.supabaseUrl + '/rest/v1/letter_subscribers', {
       method: 'POST',
       headers: { 'apikey': cfg.supabaseAnonKey, 'Authorization': 'Bearer ' + cfg.supabaseAnonKey, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-      body: JSON.stringify({ email: email, role: role, consent_version: '1.0' })
+      body: JSON.stringify({ email: email, role: role, consent_version: '1.0', source: source() })
     }).then(function (res) {
       if (res.ok || res.status === 409) { say('신청되었어요. 다음 달 7일에 첫 레터를 보내 드릴게요.', 'ok'); form.reset(); }
       else { throw new Error(String(res.status)); }

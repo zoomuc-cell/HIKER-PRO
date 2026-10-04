@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>SHINNAGE 수신 거부</title>
+<script src="config.js"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@900&family=Noto+Sans+KR:wght@400;700;900&display=swap">
+<style>
+  :root { --ink: #0b0b0d; --stage: #141418; --line: rgba(244,244,242,.12); --paper: #f4f4f2; --muted: #a9a9b3; --pink: #e6007e; --cyan: #22e0ee; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: var(--ink); color: var(--paper); font: 16px/1.7 'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif; word-break: keep-all; }
+  .card { width: 100%; max-width: 440px; padding: 36px 28px; border-radius: 20px; background: var(--stage); border: 1px solid var(--line); display: grid; gap: 18px; }
+  .logo { font: 900 18px 'Archivo', 'Arial Black', sans-serif; letter-spacing: -0.02em; }
+  .logo::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--pink); vertical-align: middle; }
+  h1 { margin: 0; font-size: 26px; font-weight: 900; letter-spacing: -0.03em; line-height: 1.3; }
+  p { margin: 0; color: var(--muted); }
+  .btn { min-height: 52px; border-radius: 999px; border: 0; font-family: inherit; font-weight: 700; font-size: 15px; cursor: pointer; background: var(--pink); color: #fff; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn:focus-visible, a:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+  a { color: var(--paper); }
+  .ok { color: var(--cyan); }
+</style>
+</head>
+<body>
+<main class="card">
+  <span class="logo">SHINNAGE</span>
+  <h1 id="title">월간 레터 수신을 거부할까요?</h1>
+  <p id="desc">거부하면 저장된 이메일 주소를 바로 삭제해요. 다시 받고 싶으면 홈페이지에서 언제든 신청할 수 있어요.</p>
+  <button class="btn" id="go" type="button">수신 거부하고 이메일 삭제</button>
+  <p><a href="/">홈으로 돌아가기</a></p>
+</main>
+<script>
+(function () {
+  var cfg = window.SHINNAGE_CONFIG || {};
+  var title = document.getElementById('title'), desc = document.getElementById('desc'), btn = document.getElementById('go');
+  var token = new URLSearchParams(location.search).get('t') || '';
+  function done(t, d, ok) { title.textContent = t; desc.textContent = d; desc.className = ok ? 'ok' : ''; btn.hidden = true; }
+
+  if (!/^[0-9a-f-]{36}$/i.test(token)) {
+    done('링크가 올바르지 않아요', '레터 메일 하단의 수신 거부 링크를 다시 눌러 주세요.', false);
+    return;
+  }
+  btn.addEventListener('click', function () {
+    btn.disabled = true; btn.textContent = '처리 중…';
+    fetch(cfg.supabaseUrl + '/rest/v1/rpc/letter_unsubscribe', {
+      method: 'POST',
+      headers: { 'apikey': cfg.supabaseAnonKey, 'Authorization': 'Bearer ' + cfg.supabaseAnonKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_token: token })
+    }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (removed) {
+        if (removed) done('수신 거부되었어요', '이메일 주소를 삭제했어요. 그동안 함께해 주셔서 고마워요.', true);
+        else done('이미 처리된 요청이에요', '이 주소는 이미 수신 거부되어 삭제된 상태예요.', true);
+      })
+      .catch(function () {
+        btn.disabled = false; btn.textContent = '다시 시도';
+        desc.textContent = '지금은 처리하지 못했어요. 잠시 후 다시 눌러 주세요.';
+      });
+  });
+})();
+</script>
+</body>
+</html>
