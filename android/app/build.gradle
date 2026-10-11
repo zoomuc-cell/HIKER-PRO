@@ -82,7 +82,7 @@ android {
         applicationId "com.hikerpro.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 6
+        versionCode 7
         versionName "1.2.2"
         missingDimensionStrategy "store", "play"
         missingDimensionStrategy "react-native-camera", "general"
