@@ -27,8 +27,6 @@ const IS_IOS = Platform.OS === 'ios';
 // 멤버십(월간/연간 Pro, 관광객 이용권)은 디지털 이용권이므로 Google Play 결제 / Apple 인앱 결제가 필수다
 // (Google Play 결제 정책, App Store 가이드라인 3.1.1). 결제 연동 전까지 모든 플랫폼에서 숨긴다.
 const MEMBERSHIP_ENABLED = false;
-// App Store 가이드라인 2.1('준비 중' 기능 금지)에 맞춰 iOS 에서는 준비 중 메뉴를 숨긴다.
-const IOS_HIDDEN_MENU_KEYS = ['map', 'history'];
 
 const DEFAULT_USER = {
   name: '사용자',
@@ -61,7 +59,7 @@ const formatDateText = (iso?: string | null) => {
   return `${d.getMonth() + 1}월 ${d.getDate()}일까지 사용 가능`;
 };
 
-const ProfileScreen = () => {
+const ProfileScreen = ({navigation}: {navigation: any}) => {
   const [user, setUser] = useState(DEFAULT_USER);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
@@ -76,8 +74,6 @@ const ProfileScreen = () => {
   const [notiVisible, setNotiVisible] = useState(false);
   const [notiEnabled, setNotiEnabled] = useState(true);
 
-  const [mapVisible, setMapVisible] = useState(false);
-  const [historyVisible, setHistoryVisible] = useState(false);
   const [privacyVisible, setPrivacyVisible] = useState(false);
   const [helpVisible, setHelpVisible] = useState(false);
 
@@ -322,7 +318,7 @@ const ProfileScreen = () => {
   const shareApp = async () => {
     try {
       await Share.share({
-        message: 'Hiker Pro - 등산의 모든 것. 오프라인 지도, 안심산행, 스탬프북까지 함께하세요.',
+        message: 'Hiker Pro - 등산·걷기 활동 기록, 지도, 등산계획 공유, 긴급 구조 요청까지 한 번에 함께하세요.',
       });
     } catch (e) {}
   };
@@ -478,18 +474,11 @@ const ProfileScreen = () => {
       onPress: shareApp,
     },
     {
-      key: 'map',
-      icon: 'map-marker-path',
-      title: '오프라인 지도',
-      sub: '오프라인 지도 기능 안내',
-      onPress: () => setMapVisible(true),
-    },
-    {
       key: 'history',
       icon: 'history',
       title: '등산 히스토리',
-      sub: '기록 관리 기능 안내',
-      onPress: () => setHistoryVisible(true),
+      sub: '저장된 활동 기록을 모두 봅니다',
+      onPress: () => navigation.navigate('Track', {historyRequestId: Date.now()}),
     },
     {
       key: 'privacy',
@@ -577,7 +566,7 @@ const ProfileScreen = () => {
         )}
 
         <View style={styles.card}>
-          {menuItems.filter(item => !IS_IOS || IOS_HIDDEN_MENU_KEYS.indexOf(item.key) < 0).map(item => (
+          {menuItems.map(item => (
             <TouchableOpacity key={item.key} style={styles.menuBtn} onPress={item.onPress}>
               <View style={styles.menuLeft}>
                 <View style={styles.menuIcon}>
@@ -754,30 +743,6 @@ const ProfileScreen = () => {
               <Text style={styles.primaryBtnText}>저장</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.closeBtn} onPress={() => setContactVisible(false)}>
-              <Text style={styles.closeBtnText}>닫기</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal visible={mapVisible} transparent animationType="fade">
-        <View style={styles.modalBack}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>오프라인 지도</Text>
-            <Text style={styles.bodyText}>오프라인 지도 기능은 준비 중입니다.</Text>
-            <TouchableOpacity style={styles.closeBtn} onPress={() => setMapVisible(false)}>
-              <Text style={styles.closeBtnText}>닫기</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal visible={historyVisible} transparent animationType="fade">
-        <View style={styles.modalBack}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>등산 히스토리</Text>
-            <Text style={styles.bodyText}>등산 기록은 차후 상세 기능으로 확장됩니다.</Text>
-            <TouchableOpacity style={styles.closeBtn} onPress={() => setHistoryVisible(false)}>
               <Text style={styles.closeBtnText}>닫기</Text>
             </TouchableOpacity>
           </View>

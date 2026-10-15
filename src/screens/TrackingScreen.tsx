@@ -1,5 +1,6 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {View, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, Modal, PermissionsAndroid, Platform} from 'react-native';
+import type {ScrollViewInstance} from 'react-native';
 import MapView, {Marker, Polyline, PROVIDER_GOOGLE} from 'react-native-maps';
 import {launchCamera} from 'react-native-image-picker';
 import ReactNativeBlobUtil from 'react-native-blob-util';
@@ -102,7 +103,7 @@ const ACTIVITY_ORDER: ActivityType[] = [
   'cycling',
 ];
 
-type HistoryPeriod = 'daily' | 'weekly' | 'monthly';
+type HistoryPeriod = 'daily' | 'weekly' | 'monthly' | 'all';
 
 const TrackingScreen = ({route}: any) => {
   const [selectedActivity, setSelectedActivity] =
@@ -130,6 +131,23 @@ const TrackingScreen = ({route}: any) => {
   const startTimeRef = useRef<number | null>(null);
   const activityRef = useRef<ActivityType>('hiking');
   const activityWeightKgRef = useRef(70);
+  const scrollRef = useRef<ScrollViewInstance | null>(null);
+  const historySectionYRef = useRef(0);
+
+  // 프로필 '등산 히스토리'에서 navigate('Track', {historyRequestId}) 로 진입: 전체 기록을 보여 주고 기록 목록으로 스크롤
+  const historyRequestId = route?.params?.historyRequestId;
+  useEffect(() => {
+    if (!historyRequestId) {
+      return;
+    }
+    setHistoryPeriod('all');
+    loadHistory();
+    const timer = setTimeout(() => {
+      scrollRef.current?.scrollTo({y: historySectionYRef.current, animated: true});
+    }, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyRequestId]);
 
   useEffect(() => {
     loadHistory();
@@ -641,7 +659,9 @@ const TrackingScreen = ({route}: any) => {
       ? startOfToday
       : historyPeriod === 'weekly'
         ? startOfWeek
-        : startOfMonth;
+        : historyPeriod === 'monthly'
+          ? startOfMonth
+          : new Date(0);
 
   const periodHistory = history.filter(item => {
     const d = new Date(item.startedAt);
@@ -671,10 +691,12 @@ const TrackingScreen = ({route}: any) => {
       ? '\uC624\uB298'
       : historyPeriod === 'weekly'
         ? '\uC774\uBC88 \uC8FC'
-        : '\uC774\uBC88 \uB2EC';
+        : historyPeriod === 'monthly'
+          ? '\uC774\uBC88 \uB2EC'
+          : '\uC804\uCCB4';
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView ref={scrollRef} style={styles.container}>
       <View style={styles.header}>
         <Icon name={currentMeta.icon} size={32} color={currentMeta.color} />
         <Text style={styles.headerText}>활동 기록</Text>
@@ -804,7 +826,11 @@ const TrackingScreen = ({route}: any) => {
          </Card.Content>
        </Card>
 
-       <Text style={styles.sectionTitle}>
+       <Text
+        style={styles.sectionTitle}
+        onLayout={event => {
+          historySectionYRef.current = event.nativeEvent.layout.y;
+        }}>
         {'\uD65C\uB3D9 \uAE30\uB85D \uC870\uD68C'}
       </Text>
 
@@ -814,6 +840,7 @@ const TrackingScreen = ({route}: any) => {
             ['daily', '\uC624\uB298'],
             ['weekly', '\uC774\uBC88 \uC8FC'],
             ['monthly', '\uC774\uBC88 \uB2EC'],
+            ['all', '\uC804\uCCB4'],
           ] as [HistoryPeriod, string][]
         ).map(([period, label]) => {
           const active = historyPeriod === period;
@@ -847,7 +874,7 @@ const TrackingScreen = ({route}: any) => {
           </Card.Content>
         </Card>
       ) : (
-        periodHistory.slice(0, 20).map(item => {
+        periodHistory.slice(0, historyPeriod === 'all' ? 100 : 20).map(item => {
           const meta = ACTIVITY_META[item.activityType];
           return (
             <Card style={styles.historyCard} key={item.id}>
