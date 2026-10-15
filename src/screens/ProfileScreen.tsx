@@ -1,4 +1,5 @@
-import React, {useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
+import {useFocusEffect} from '@react-navigation/native';
 import {
   View,
   Text,
@@ -28,16 +29,56 @@ const IS_IOS = Platform.OS === 'ios';
 // (Google Play 결제 정책, App Store 가이드라인 3.1.1). 결제 연동 전까지 모든 플랫폼에서 숨긴다.
 const MEMBERSHIP_ENABLED = false;
 
+// 예전 버전이 기본값으로 저장하던 개발자 이메일. 사용자가 입력한 값이 아니므로 표시하지 않는다.
+const LEGACY_DEFAULT_EMAIL = 'admin@auratechnologies.kr';
+const HISTORY_KEY = 'hiker_activity_history';
+
 const DEFAULT_USER = {
   name: '사용자',
-  email: 'admin@auratechnologies.kr',
-  hikingLevel: '중급',
-  totalHikes: 42,
-  totalDistance: 156.4,
+  email: '',
   age: null as number | null,
   gender: '' as string,
   heightCm: null as number | null,
   weightKg: null as number | null,
+};
+
+// 실제 저장된 활동 기록(활동 기록 탭)에서 계산한 등산 통계
+type HikingStats = {hikes: number; distanceKm: number; level: string};
+
+const EMPTY_STATS: HikingStats = {hikes: 0, distanceKm: 0, level: '입문'};
+
+const hikingLevelFor = (hikes: number) => {
+  if (hikes >= 40) {
+    return '상급';
+  }
+  if (hikes >= 15) {
+    return '중급';
+  }
+  if (hikes >= 5) {
+    return '초급';
+  }
+  return '입문';
+};
+
+const loadHikingStats = async (): Promise<HikingStats> => {
+  try {
+    const raw = await AsyncStorage.getItem(HISTORY_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    const hikes = (Array.isArray(parsed) ? parsed : []).filter(
+      (item: any) => item?.activityType === 'hiking',
+    );
+    const distanceM = hikes.reduce(
+      (sum: number, item: any) => sum + (Number(item?.distanceM) || 0),
+      0,
+    );
+    return {
+      hikes: hikes.length,
+      distanceKm: Math.round(distanceM / 100) / 10,
+      level: hikingLevelFor(hikes.length),
+    };
+  } catch (e) {
+    return EMPTY_STATS;
+  }
 };
 
 const hashPin = (s: string) => {
@@ -60,6 +101,22 @@ const formatDateText = (iso?: string | null) => {
 };
 
 const ProfileScreen = ({navigation}: {navigation: any}) => {
+  const [stats, setStats] = useState<HikingStats>(EMPTY_STATS);
+
+  // 활동을 저장하고 돌아올 때마다 통계를 다시 계산
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      loadHikingStats().then(next => {
+        if (active) {
+          setStats(next);
+        }
+      });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
   const [user, setUser] = useState(DEFAULT_USER);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
@@ -101,7 +158,11 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
         const savedContact = await AsyncStorage.getItem('hiker_emergency_contact');
 
         if (savedUser) {
-          setUser({...DEFAULT_USER, ...JSON.parse(savedUser)});
+          const parsedUser = {...DEFAULT_USER, ...JSON.parse(savedUser)};
+          if (parsedUser.email === LEGACY_DEFAULT_EMAIL) {
+            parsedUser.email = '';
+          }
+          setUser(parsedUser);
         }
         if (savedNoti !== null) {
           setNotiEnabled(savedNoti === '1');
@@ -260,7 +321,7 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
     const nextUser = {
       ...user,
       name: (editName || '').trim() || '사용자',
-      email: (editEmail || '').trim() || 'admin@auratechnologies.kr',
+      email: (editEmail || '').trim(),
       age,
       gender: editGender,
       heightCm,
@@ -385,6 +446,7 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
         style: 'destructive',
         onPress: async () => {
           await AsyncStorage.clear();
+          setStats(EMPTY_STATS);
           setUser(DEFAULT_USER);
           setAvatarUri(null);
           setNotiEnabled(true);
@@ -515,7 +577,7 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
           </TouchableOpacity>
 
           <Text style={styles.name}>{user.name}</Text>
-          <Text style={styles.email}>{user.email}</Text>
+          {user.email ? <Text style={styles.email}>{user.email}</Text> : null}
 
           {MEMBERSHIP_ENABLED && (
           <View style={styles.badge}>
@@ -538,15 +600,15 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
 
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{user.totalHikes}</Text>
+            <Text style={styles.statValue}>{stats.hikes}</Text>
             <Text style={styles.statLabel}>총 산행</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{user.totalDistance}</Text>
+            <Text style={styles.statValue}>{stats.distanceKm}</Text>
             <Text style={styles.statLabel}>누적 거리(km)</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{user.hikingLevel}</Text>
+            <Text style={styles.statValue}>{stats.level}</Text>
             <Text style={styles.statLabel}>등산 레벨</Text>
           </View>
         </View>
