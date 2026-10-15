@@ -24,8 +24,10 @@ import ReactNativeBlobUtil from 'react-native-blob-util';
 const ADMIN_DEVICE_IDS = ['9da67a462cc43660'];
 
 const IS_IOS = Platform.OS === 'ios';
-// App Store 가이드라인(3.1.1: 디지털 이용권은 인앱 결제 필수, 2.1: '준비 중' 기능 금지)에 맞춰
-// iOS 에서는 결제 연동 전의 멤버십 안내와 준비 중 메뉴를 숨긴다.
+// 멤버십(월간/연간 Pro, 관광객 이용권)은 디지털 이용권이므로 Google Play 결제 / Apple 인앱 결제가 필수다
+// (Google Play 결제 정책, App Store 가이드라인 3.1.1). 결제 연동 전까지 모든 플랫폼에서 숨긴다.
+const MEMBERSHIP_ENABLED = false;
+// App Store 가이드라인 2.1('준비 중' 기능 금지)에 맞춰 iOS 에서는 준비 중 메뉴를 숨긴다.
 const IOS_HIDDEN_MENU_KEYS = ['map', 'history'];
 
 const DEFAULT_USER = {
@@ -526,6 +528,7 @@ const ProfileScreen = () => {
           <Text style={styles.name}>{user.name}</Text>
           <Text style={styles.email}>{user.email}</Text>
 
+          {MEMBERSHIP_ENABLED && (
           <View style={styles.badge}>
             <Icon
               name={proActive ? 'crown' : 'account-outline'}
@@ -534,8 +537,9 @@ const ProfileScreen = () => {
             />
             <Text style={styles.badgeText}>{proActive ? 'Hiker Pro 활성' : '일반 사용자'}</Text>
           </View>
+          )}
 
-          {passInfo?.expiry ? (
+          {MEMBERSHIP_ENABLED && passInfo?.expiry ? (
             <View style={styles.passBanner}>
               <Icon name="ticket-confirmation-outline" size={16} color="#F57C00" />
               <Text style={styles.passText}>관광객 이용권: {formatDateText(passInfo.expiry)}</Text>
@@ -558,7 +562,7 @@ const ProfileScreen = () => {
           </View>
         </View>
 
-        {!IS_IOS && (
+        {MEMBERSHIP_ENABLED && (
         <View style={styles.card}>
           <View style={styles.cardHead}>
             <Text style={styles.cardTitle}>멤버십</Text>
@@ -818,7 +822,7 @@ const ProfileScreen = () => {
         </View>
       </Modal>
 
-      <Modal visible={upgVisible} transparent animationType="fade">
+      <Modal visible={MEMBERSHIP_ENABLED && upgVisible} transparent animationType="fade">
         <View style={styles.modalBack}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>멤버십 업그레이드</Text>
