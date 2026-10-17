@@ -2,6 +2,7 @@
 
 - android { } 에 namespace 가 없으면 AndroidManifest.xml 의 package 값으로 추가
 - Gradle 9 에서 제거된 jcenter() 저장소 제거
+- buildscript 에 고정된 오래된 AGP(3.x~7.x) classpath 제거 (루트 프로젝트의 AGP 를 사용)
 
 개발자 PC 의 node_modules 에는 같은 수정이 이미 직접 적용돼 있어, 저장소에는 패치를 넣지 않고
 CI 에서만 실행한다.
@@ -26,6 +27,7 @@ for name, dep in config['dependencies'].items():
     text = gradle.read_text(encoding='utf-8')
     original = text
     text = re.sub(r'^\s*jcenter\(\)\s*$\n?', '', text, flags=re.M)
+    text = re.sub(r'^\s*classpath\s*\(?\s*[\'"]com\.android\.tools\.build:gradle:[3-7]\.[^\'"]*[\'"]\s*\)?\s*$\n?', '', text, flags=re.M)
     if 'namespace' not in text:
         manifest = source / 'src' / 'main' / 'AndroidManifest.xml'
         match = re.search(r'package="([^"]+)"', manifest.read_text(encoding='utf-8')) if manifest.exists() else None
