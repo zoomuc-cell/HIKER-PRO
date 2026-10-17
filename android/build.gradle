@@ -6,6 +6,8 @@ buildscript {
         targetSdkVersion = 36
         ndkVersion = "27.1.12297006"
         kotlinVersion = "2.2.0"
+        // react-native-iap 가 사용하는 AGP 버전 (React Native 0.87 gradle plugin 과 동일)
+        androidGradlePluginVersion = "9.2.1"
     }
     repositories {
         google()

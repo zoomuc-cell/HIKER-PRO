@@ -11,6 +11,7 @@ import com.facebook.react.defaults.DefaultReactHost;
 import com.facebook.react.defaults.DefaultReactNativeHost;
 import com.facebook.react.soloader.OpenSourceMergedSoMapping;
 import com.facebook.soloader.SoLoader;
+import com.margelo.nitro.iap.NitroIapPackage;
 import java.util.List;
 
 public class MainApplication extends Application implements ReactApplication {
@@ -28,6 +29,7 @@ public class MainApplication extends Application implements ReactApplication {
           List<ReactPackage> packages = new PackageList(this).getPackages();
     packages.add(new AdminIdPackage());
           packages.add(new HikerSharePackage());
+          packages.add(new NitroIapPackage());
           // Packages that cannot be autolinked yet can be added manually here
           return packages;
         }
@@ -52,6 +54,7 @@ public class MainApplication extends Application implements ReactApplication {
   private List<ReactPackage> getReactHostPackages() {
     List<ReactPackage> packages = new PackageList(this).getPackages();
     packages.add(new HikerSharePackage());
+    packages.add(new NitroIapPackage());
     return packages;
   }
 

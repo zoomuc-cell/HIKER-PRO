@@ -20,14 +20,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {launchImageLibrary, launchCamera} from 'react-native-image-picker';
 import DeviceInfo from 'react-native-device-info';
 import ReactNativeBlobUtil from 'react-native-blob-util';
+import ProUpgradeModal from '../components/ProUpgradeModal';
+import {setAdminOverride, usePro} from '../services/ProService';
+import {BackupError, exportBackup, pickBackup, restoreBackup} from '../utils/backup';
+import {shareErrorMessage} from '../utils/nativeShare';
 
 // Android: ANDROID_ID, iOS: identifierForVendor (앱을 삭제 후 재설치하면 바뀜)
 const ADMIN_DEVICE_IDS = ['9da67a462cc43660'];
 
 const IS_IOS = Platform.OS === 'ios';
-// 멤버십(월간/연간 Pro, 관광객 이용권)은 디지털 이용권이므로 Google Play 결제 / Apple 인앱 결제가 필수다
-// (Google Play 결제 정책, App Store 가이드라인 3.1.1). 결제 연동 전까지 모든 플랫폼에서 숨긴다.
-const MEMBERSHIP_ENABLED = false;
+// 앱 데이터 초기화 때도 지우지 않는 키 (구매한 관광객 이용권·구독 상태)
+const KEEP_ON_RESET_KEYS = ['hiker_entitlement'];
 
 // 예전 버전이 기본값으로 저장하던 개발자 이메일. 사용자가 입력한 값이 아니므로 표시하지 않는다.
 const LEGACY_DEFAULT_EMAIL = 'admin@auratechnologies.kr';
@@ -139,8 +142,8 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
   const [contactPhone, setContactPhone] = useState('');
 
   const [upgVisible, setUpgVisible] = useState(false);
-  const [proActive, setProActive] = useState(false);
-  const [passInfo, setPassInfo] = useState<any>(null);
+  const [upgradeFeature, setUpgradeFeature] = useState<string | null>(null);
+  const pro = usePro();
 
   const [adminStage, setAdminStage] = useState<string | null>(null);
   const [pinInput, setPinInput] = useState('');
@@ -153,8 +156,6 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
         const savedUser = await AsyncStorage.getItem('hiker_user');
         const savedNoti = await AsyncStorage.getItem('hiker_noti');
         const savedAvatar = await AsyncStorage.getItem('hiker_avatar');
-        const savedPro = await AsyncStorage.getItem('hiker_pro');
-        const savedPass = await AsyncStorage.getItem('hiker_tourist_pass');
         const savedContact = await AsyncStorage.getItem('hiker_emergency_contact');
 
         if (savedUser) {
@@ -170,28 +171,12 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
         if (savedAvatar) {
           setAvatarUri(savedAvatar);
         }
-        if (savedPro === '1') {
-          setProActive(true);
-        }
         if (savedContact) {
           try {
             const c = JSON.parse(savedContact);
             setContactName(c?.name || '');
             setContactPhone(c?.phone || '');
           } catch (e) {}
-        }
-        if (savedPass) {
-          try {
-            const parsed = JSON.parse(savedPass);
-            if (parsed?.expiry && new Date(parsed.expiry).getTime() > Date.now()) {
-              setPassInfo(parsed);
-            } else {
-              await AsyncStorage.removeItem('hiker_tourist_pass');
-              setPassInfo(null);
-            }
-          } catch (e) {
-            setPassInfo(null);
-          }
         }
       } catch (e) {}
     };
@@ -384,51 +369,96 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
     } catch (e) {}
   };
 
-  const requestUpgrade = async (plan: string) => {
-    const label = String(plan || 'Pro');
-    const stamp = new Date().toISOString() + '|' + label;
-    await AsyncStorage.setItem('hiker_upgrade_requested', stamp);
-
-    if (label.indexOf('관광') >= 0) {
-      const now = new Date();
-      const expiry = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000);
-      const pass = {
-        start: now.toISOString(),
-        expiry: expiry.toISOString(),
-      };
-      await AsyncStorage.setItem('hiker_tourist_pass', JSON.stringify(pass));
-      setPassInfo(pass);
+  // Pro 기능이면 바로 실행하고, 아니면 멤버십 안내 창을 연다
+  const requirePro = (featureName: string, action: () => void) => {
+    if (pro.isPro) {
+      action();
+      return;
     }
-
-    setUpgVisible(false);
-    Alert.alert('신청 완료', label + ' 신청이 저장되었습니다.');
+    setUpgradeFeature(featureName);
+    setUpgVisible(true);
   };
 
-  const showRequests = async () => {
-    const req = await AsyncStorage.getItem('hiker_upgrade_requested');
-    const pass = await AsyncStorage.getItem('hiker_tourist_pass');
+  const openMembership = () => {
+    setUpgradeFeature(null);
+    setUpgVisible(true);
+  };
 
-    const rows: string[] = [];
-    if (req) {
-      rows.push('업그레이드 신청: ' + req);
+  const runBackup = async () => {
+    try {
+      await exportBackup();
+    } catch (e) {
+      Alert.alert('백업 실패', shareErrorMessage(e));
     }
-    if (pass) {
-      try {
-        const p = JSON.parse(pass);
-        rows.push('관광객 이용권 만료: ' + (p.expiry || '정보 없음'));
-      } catch (e) {
-        rows.push('관광객 이용권 데이터가 저장되어 있습니다.');
+  };
+
+  const runRestore = async () => {
+    try {
+      const backup = await pickBackup();
+      if (!backup) {
+        return;
       }
+      const created = backup.createdAt ? new Date(backup.createdAt).toLocaleString() : '알 수 없음';
+      Alert.alert(
+        '백업 불러오기',
+        `백업 날짜: ${created}\n활동 기록 ${backup.activityCount}개, 등산 계획 ${backup.planCount}개\n\n` +
+          '현재 기기의 같은 항목이 백업 내용으로 바뀝니다. 계속할까요?',
+        [
+          {text: '취소', style: 'cancel'},
+          {
+            text: '불러오기',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await restoreBackup(backup);
+                setStats(await loadHikingStats());
+                const savedUser = await AsyncStorage.getItem('hiker_user');
+                if (savedUser) {
+                  setUser({...DEFAULT_USER, ...JSON.parse(savedUser)});
+                }
+                Alert.alert(
+                  '복원 완료',
+                  '기록을 불러왔습니다. 앱을 완전히 종료했다가 다시 열면 모든 화면에 반영됩니다.\n사진 파일은 백업에 포함되지 않습니다.',
+                );
+              } catch (e) {
+                Alert.alert('복원 실패', '기록을 불러오지 못했습니다.');
+              }
+            },
+          },
+        ],
+      );
+    } catch (e) {
+      Alert.alert('불러오기 실패', e instanceof BackupError ? e.message : shareErrorMessage(e));
     }
+  };
 
-    Alert.alert('신청 내역', rows.length ? rows.join('\n') : '신청 내역이 없습니다.');
+  const openBackupMenu = () => {
+    Alert.alert(
+      '기록 백업·복원',
+      '활동 기록, 등산 계획, 프로필, 비상 연락처를 파일 하나로 저장하거나 불러옵니다. 파일은 Google Drive·iCloud·메일 등 원하는 곳에 보관하세요.\n(사진 파일은 포함되지 않습니다)',
+      [
+        {text: '백업 파일 만들기', onPress: runBackup},
+        {text: '백업 불러오기', onPress: runRestore},
+        {text: '닫기', style: 'cancel'},
+      ],
+    );
+  };
+
+  const showProStatus = () => {
+    const rows = [
+      '스토어 상품: ' + (pro.storeAvailable ? pro.plans.map(p => `${p.title} ${p.price}`).join(', ') : '불러오지 못함'),
+      'Pro 상태: ' + (pro.source || '없음'),
+    ];
+    if (pro.passExpiresAt) {
+      rows.push('관광객 이용권 만료: ' + new Date(pro.passExpiresAt).toLocaleString());
+    }
+    Alert.alert('결제 상태', rows.join('\n'));
   };
 
   const togglePro = async () => {
-    const next = !proActive;
-    setProActive(next);
-    await AsyncStorage.setItem('hiker_pro', next ? '1' : '0');
-    Alert.alert('완료', next ? 'Pro가 활성화되었습니다.' : 'Pro가 비활성화되었습니다.');
+    const next = pro.source !== 'admin';
+    await setAdminOverride(next);
+    Alert.alert('완료', next ? '관리자 설정으로 Pro가 활성화되었습니다.' : '관리자 Pro 설정을 껐습니다.');
   };
 
   const resetPin = async () => {
@@ -445,13 +475,14 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
         text: '초기화',
         style: 'destructive',
         onPress: async () => {
-          await AsyncStorage.clear();
+          // 구매한 이용권·구독 상태는 남기고 나머지만 지운다
+          const keys = await AsyncStorage.getAllKeys();
+          await AsyncStorage.multiRemove(keys.filter(key => KEEP_ON_RESET_KEYS.indexOf(key) < 0));
+          await setAdminOverride(false);
           setStats(EMPTY_STATS);
           setUser(DEFAULT_USER);
           setAvatarUri(null);
           setNotiEnabled(true);
-          setProActive(false);
-          setPassInfo(null);
           setContactName('');
           setContactPhone('');
           setAdminStage(null);
@@ -513,6 +544,20 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
       title: '프로필 수정',
       sub: '이름과 이메일을 변경합니다',
       onPress: openEdit,
+    },
+    {
+      key: 'stats',
+      icon: 'chart-bar',
+      title: '상세 통계' + (pro.isPro ? '' : ' (Pro)'),
+      sub: '월별·연도별 기록과 개인 최고 기록',
+      onPress: () => requirePro('상세 통계', () => navigation.navigate('Stats')),
+    },
+    {
+      key: 'backup',
+      icon: 'cloud-upload-outline',
+      title: '기록 백업·복원' + (pro.isPro ? '' : ' (Pro)'),
+      sub: '파일로 저장하고 다른 기기에서 불러오기',
+      onPress: () => requirePro('기록 백업·복원', openBackupMenu),
     },
     {
       key: 'noti',
@@ -579,21 +624,23 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
           <Text style={styles.name}>{user.name}</Text>
           {user.email ? <Text style={styles.email}>{user.email}</Text> : null}
 
-          {MEMBERSHIP_ENABLED && (
+          {pro.isPro || pro.storeAvailable ? (
           <View style={styles.badge}>
             <Icon
-              name={proActive ? 'crown' : 'account-outline'}
+              name={pro.isPro ? 'crown' : 'account-outline'}
               size={16}
-              color={proActive ? '#FFD54F' : '#E8F5E9'}
+              color={pro.isPro ? '#FFD54F' : '#E8F5E9'}
             />
-            <Text style={styles.badgeText}>{proActive ? 'Hiker Pro 활성' : '일반 사용자'}</Text>
+            <Text style={styles.badgeText}>{pro.isPro ? 'Hiker Pro 활성' : '일반 사용자'}</Text>
           </View>
-          )}
+          ) : null}
 
-          {MEMBERSHIP_ENABLED && passInfo?.expiry ? (
+          {pro.source === 'pass' && pro.passExpiresAt ? (
             <View style={styles.passBanner}>
               <Icon name="ticket-confirmation-outline" size={16} color="#F57C00" />
-              <Text style={styles.passText}>관광객 이용권: {formatDateText(passInfo.expiry)}</Text>
+              <Text style={styles.passText}>
+                관광객 이용권: {formatDateText(new Date(pro.passExpiresAt).toISOString())}
+              </Text>
             </View>
           ) : null}
         </View>
@@ -613,19 +660,22 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
           </View>
         </View>
 
-        {MEMBERSHIP_ENABLED && (
+        {/* 스토어에서 상품을 불러왔거나 이미 Pro 인 경우에만 멤버십 안내 표시 */}
+        {pro.storeAvailable || pro.isPro ? (
         <View style={styles.card}>
           <View style={styles.cardHead}>
             <Text style={styles.cardTitle}>멤버십</Text>
-            <TouchableOpacity onPress={() => setUpgVisible(true)}>
-              <Text style={styles.cardLink}>업그레이드</Text>
+            <TouchableOpacity onPress={openMembership}>
+              <Text style={styles.cardLink}>{pro.isPro ? '관리' : 'Pro 알아보기'}</Text>
             </TouchableOpacity>
           </View>
           <Text style={styles.cardDesc}>
-            월간 Pro ₩2,900 / 연간 Pro ₩29,000 / 관광객 이용권 ₩1,500
+            {pro.isPro
+              ? '상세 통계, GPX 경로 내보내기, 기록 백업·복원을 사용할 수 있습니다.'
+              : '상세 통계 · GPX 경로 내보내기 · 기록 백업·복원 (월간/연간 구독 또는 5일 관광객 이용권)'}
           </Text>
         </View>
-        )}
+        ) : null}
 
         <View style={styles.card}>
           {menuItems.map(item => (
@@ -849,32 +899,11 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
         </View>
       </Modal>
 
-      <Modal visible={MEMBERSHIP_ENABLED && upgVisible} transparent animationType="fade">
-        <View style={styles.modalBack}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>멤버십 업그레이드</Text>
-
-            <TouchableOpacity style={styles.planCard} onPress={() => requestUpgrade('월간 Pro ₩2,900')}>
-              <Text style={styles.planTitle}>월간 Pro</Text>
-              <Text style={styles.planSub}>₩2,900 / 월</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.planCard} onPress={() => requestUpgrade('연간 Pro ₩29,000')}>
-              <Text style={styles.planTitle}>연간 Pro</Text>
-              <Text style={styles.planSub}>₩29,000 / 년</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.planCard} onPress={() => requestUpgrade('관광객 이용권 ₩1,500')}>
-              <Text style={styles.planTitle}>관광객 이용권</Text>
-              <Text style={styles.planSub}>₩1,500 / 5일 유효</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.closeBtn} onPress={() => setUpgVisible(false)}>
-              <Text style={styles.closeBtnText}>닫기</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <ProUpgradeModal
+        visible={upgVisible}
+        featureName={upgradeFeature}
+        onClose={() => setUpgVisible(false)}
+      />
 
       <Modal visible={!!adminStage} transparent animationType="fade">
         <View style={styles.modalBack}>
@@ -922,12 +951,12 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
 
                 <TouchableOpacity style={styles.primaryBtn} onPress={togglePro}>
                   <Text style={styles.primaryBtnText}>
-                    {proActive ? 'Pro 비활성화' : 'Pro 활성화'}
+                    {pro.source === 'admin' ? '관리자 Pro 끄기' : '관리자 Pro 켜기 (테스트)'}
                   </Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.primaryBtn} onPress={showRequests}>
-                  <Text style={styles.primaryBtnText}>업그레이드 신청 내역</Text>
+                <TouchableOpacity style={styles.primaryBtn} onPress={showProStatus}>
+                  <Text style={styles.primaryBtnText}>결제 상태 확인</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={styles.primaryBtn} onPress={resetPin}>

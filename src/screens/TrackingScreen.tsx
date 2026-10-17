@@ -9,6 +9,9 @@ import {Text, Card, Button, ProgressBar} from 'react-native-paper';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import LocationService from '../services/LocationService';
 import {cameraErrorMessage, requestCameraPermission, requestLocationPermission} from '../utils/permissions';
+import {exportActivityGpx} from '../utils/gpx';
+import {usePro} from '../services/ProService';
+import ProUpgradeModal from '../components/ProUpgradeModal';
 
 const HISTORY_KEY = 'hiker_activity_history';
 const VISITED_KEY = 'hiker_visited_regions';
@@ -119,6 +122,24 @@ const TrackingScreen = ({route}: any) => {
   const [photos, setPhotos] = useState<ActivityPhoto[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<ActivityRecord | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<ActivityPhoto | null>(null);
+  const [gpxUpgradeVisible, setGpxUpgradeVisible] = useState(false);
+  const pro = usePro();
+
+  const exportGpx = async (record: ActivityRecord) => {
+    if (!pro.isPro) {
+      setGpxUpgradeVisible(true);
+      return;
+    }
+    if (!record.routePoints || record.routePoints.length < 2) {
+      Alert.alert('GPX 내보내기', '이 활동에는 내보낼 경로가 없습니다.');
+      return;
+    }
+    try {
+      await exportActivityGpx(record);
+    } catch (error: any) {
+      Alert.alert('GPX 내보내기', error?.message || 'GPX 파일을 만들지 못했습니다.');
+    }
+  };
   const [cameraBusy, setCameraBusy] = useState(false);
 
   const watchRef = useRef<{remove: () => void} | null>(null);
@@ -967,8 +988,18 @@ const TrackingScreen = ({route}: any) => {
         <View style={styles.routeModal}>
           <View style={styles.routeHeader}>
             <Text style={styles.routeTitle}>{selectedRecord?.activityLabel || '활동'} 경로·사진</Text>
-            <Button onPress={() => {setSelectedRecord(null); setSelectedPhoto(null);}}>닫기</Button>
+            <View style={styles.routeHeaderButtons}>
+              {selectedRecord ? (
+                <Button icon={pro.isPro ? 'export-variant' : 'lock'} onPress={() => exportGpx(selectedRecord)}>GPX</Button>
+              ) : null}
+              <Button onPress={() => {setSelectedRecord(null); setSelectedPhoto(null);}}>닫기</Button>
+            </View>
           </View>
+          <ProUpgradeModal
+            visible={gpxUpgradeVisible}
+            featureName="GPX 경로 내보내기"
+            onClose={() => setGpxUpgradeVisible(false)}
+          />
           {selectedRecord?.routePoints && selectedRecord.routePoints.length > 0 ? (
             <MapView
               provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
@@ -1113,7 +1144,8 @@ const styles = StyleSheet.create({
    photoButton: {marginTop: 12},
    routeModal: {flex: 1, backgroundColor: '#fff'},
    routeHeader: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12},
-   routeTitle: {fontSize: 18, fontWeight: 'bold', color: '#333'},
+   routeTitle: {fontSize: 18, fontWeight: 'bold', color: '#333', flexShrink: 1},
+   routeHeaderButtons: {flexDirection: 'row', alignItems: 'center'},
    routeMap: {flex: 1},
    noRouteText: {flex: 1, padding: 24, textAlign: 'center', color: '#666'},
    selectedPhotoBox: {height: 220, alignItems: 'center', padding: 8},

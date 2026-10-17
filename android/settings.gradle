@@ -3,4 +3,8 @@ plugins { id("com.facebook.react.settings") }
 extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
 rootProject.name = 'HikerPro'
 include ':app'
+
+// react-native-iap(Nitro)는 BaseReactPackage 를 사용해 @react-native-community/cli 13 자동 링크가 인식하지 못하므로 수동 링크
+include ':react-native-iap'
+project(':react-native-iap').projectDir = new File(rootProject.projectDir, '../node_modules/react-native-iap/android')
 includeBuild('../node_modules/@react-native/gradle-plugin')

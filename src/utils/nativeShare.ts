@@ -19,6 +19,8 @@ type HikerShareNative = {
     title: string | null,
   ) => Promise<ImageShareResult | boolean>;
   copyText?: (text: string, label: string | null) => Promise<boolean>;
+  shareFile?: (path: string, mimeType: string | null, title: string | null) => Promise<boolean>;
+  pickTextFile?: () => Promise<string | null>;
   composeActivityCard?: (
     mapPath: string,
     title: string | null,
@@ -52,6 +54,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   E_UNAVAILABLE: '이미지 공유 기능을 사용할 수 없습니다. 앱을 다시 빌드해 설치해 주세요.',
   E_CLIPBOARD: '클립보드에 복사하지 못했습니다.',
   E_COMPOSE: '요약 이미지를 만들지 못했습니다.',
+  E_TOO_LARGE: '파일이 너무 큽니다.',
+  E_READ: '파일을 읽지 못했습니다.',
+  E_BUSY: '이미 파일 선택 화면이 열려 있습니다.',
 };
 
 export const shareErrorMessage = (error: unknown) => {
@@ -103,6 +108,22 @@ export const copyTextToClipboard = async (text: string, label?: string) => {
     throw new ShareError('E_UNAVAILABLE', ERROR_MESSAGES.E_UNAVAILABLE);
   }
   await HikerShare.copyText(text, label || null);
+};
+
+// 앱 내부 파일 1개 공유 (GPX, 백업 JSON 등)
+export const shareFileContent = async (fileUri: string, mimeType: string, title?: string) => {
+  if (!isSupportedPlatform || !HikerShare?.shareFile) {
+    throw new ShareError('E_UNAVAILABLE', ERROR_MESSAGES.E_UNAVAILABLE);
+  }
+  await HikerShare.shareFile(fileUri, mimeType, title || null);
+};
+
+// 사용자가 고른 텍스트 파일 내용 읽기. 취소하면 null
+export const pickTextFile = async (): Promise<string | null> => {
+  if (!isSupportedPlatform || !HikerShare?.pickTextFile) {
+    throw new ShareError('E_UNAVAILABLE', ERROR_MESSAGES.E_UNAVAILABLE);
+  }
+  return HikerShare.pickTextFile();
 };
 
 export const toFilePath = (uri: string) =>

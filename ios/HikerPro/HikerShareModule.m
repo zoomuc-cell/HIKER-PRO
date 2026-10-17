@@ -14,6 +14,15 @@ RCT_EXTERN_METHOD(shareImage:(NSString *)path
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(shareFile:(NSString *)path
+                  mimeType:(NSString *)mimeType
+                  title:(NSString *)title
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(pickTextFile:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(copyText:(NSString *)text
                   label:(NSString *)label
                   resolver:(RCTPromiseResolveBlock)resolve

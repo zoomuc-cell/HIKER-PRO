@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import UniformTypeIdentifiers
 import React
 
 /**
@@ -88,6 +89,64 @@ final class HikerShareModule: NSObject {
         "mimeType": mime,
         "textAttached": !text.isEmpty,
       ])
+    }
+  }
+
+  // MARK: - shareFile
+
+  /// 앱 내부 파일 1개 공유 (GPX, 백업 JSON 등)
+  @objc(shareFile:mimeType:title:resolver:rejecter:)
+  func shareFile(
+    _ path: String?,
+    mimeType: String?,
+    title: String?,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    guard let path, let fileURL = fileURL(from: path), fileExists(fileURL) else {
+      reject("E_FILE_NOT_FOUND", "공유할 파일을 찾을 수 없습니다.", nil)
+      return
+    }
+    guard isInsideAppSandbox(fileURL) else {
+      reject("E_PATH_NOT_ALLOWED", "앱 내부 파일만 공유할 수 있습니다.", nil)
+      return
+    }
+    DispatchQueue.main.async {
+      if self.presentShareSheet(items: [fileURL]) {
+        resolve(true)
+      } else {
+        reject("E_NO_APP", "공유 화면을 열 수 없습니다.", nil)
+      }
+    }
+  }
+
+  // MARK: - pickTextFile
+
+  private var pickResolve: RCTPromiseResolveBlock?
+  private var pickReject: RCTPromiseRejectBlock?
+  private static let maxTextFileBytes = 20 * 1024 * 1024
+
+  /// 사용자가 고른 텍스트 파일(백업 JSON)을 읽어 내용을 돌려준다. 취소하면 nil.
+  @objc(pickTextFile:rejecter:)
+  func pickTextFile(
+    _ resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.main.async {
+      guard self.pickResolve == nil else {
+        reject("E_BUSY", "이미 파일 선택 화면이 열려 있습니다.", nil)
+        return
+      }
+      guard let presenter = RCTPresentedViewController() else {
+        reject("E_NO_ACTIVITY", "화면이 준비되지 않았습니다.", nil)
+        return
+      }
+      let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.json, .plainText, .data], asCopy: true)
+      picker.delegate = self
+      picker.allowsMultipleSelection = false
+      self.pickResolve = resolve
+      self.pickReject = reject
+      presenter.present(picker, animated: true)
     }
   }
 
@@ -290,6 +349,45 @@ final class HikerShareModule: NSObject {
     }
     presenter.present(controller, animated: true)
     return true
+  }
+}
+
+extension HikerShareModule: UIDocumentPickerDelegate {
+  func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+    let resolve = pickResolve
+    let reject = pickReject
+    pickResolve = nil
+    pickReject = nil
+    guard let url = urls.first else {
+      resolve?(nil)
+      return
+    }
+    let accessing = url.startAccessingSecurityScopedResource()
+    defer {
+      if accessing { url.stopAccessingSecurityScopedResource() }
+    }
+    do {
+      let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.intValue ?? 0
+      if size > HikerShareModule.maxTextFileBytes {
+        reject?("E_TOO_LARGE", "파일이 너무 큽니다.", nil)
+        return
+      }
+      let data = try Data(contentsOf: url)
+      guard let text = String(data: data, encoding: .utf8) else {
+        reject?("E_READ", "파일을 읽지 못했습니다.", nil)
+        return
+      }
+      resolve?(text)
+    } catch {
+      reject?("E_READ", "파일을 읽지 못했습니다.", error)
+    }
+  }
+
+  func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+    let resolve = pickResolve
+    pickResolve = nil
+    pickReject = nil
+    resolve?(nil)
   }
 }
 

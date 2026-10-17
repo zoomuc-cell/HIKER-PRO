@@ -1,5 +1,6 @@
 package com.hikerpro
 
+import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipDescription
@@ -17,6 +18,7 @@ import android.net.Uri
 import android.text.TextPaint
 import android.text.TextUtils
 import androidx.core.content.FileProvider
+import com.facebook.react.bridge.ActivityEventListener
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -36,9 +38,20 @@ import java.io.FileOutputStream
  * content:// URI 로 변환해 읽기 권한만 부여한다.
  */
 class HikerShareModule(private val reactContext: ReactApplicationContext) :
-    ReactContextBaseJavaModule(reactContext) {
+    ReactContextBaseJavaModule(reactContext), ActivityEventListener {
 
   override fun getName(): String = "HikerShare"
+
+  private var pickPromise: Promise? = null
+
+  init {
+    reactContext.addActivityEventListener(this)
+  }
+
+  companion object {
+    private const val PICK_TEXT_FILE_REQUEST = 47101
+    private const val MAX_TEXT_FILE_BYTES = 20 * 1024 * 1024
+  }
 
   private fun providerAuthority(context: Context): String = context.packageName + ".provider"
 
@@ -349,4 +362,110 @@ class HikerShareModule(private val reactContext: ReactApplicationContext) :
       promise.reject("E_SHARE_FAILED", e.message, e)
     }
   }
+
+  /**
+   * 앱 내부 파일 1개 공유 (GPX, 백업 JSON 등). 이미지가 아닌 파일용.
+   */
+  @ReactMethod
+  fun shareFile(path: String?, mimeType: String?, title: String?, promise: Promise) {
+    val file = resolveAppFile(path)
+    if (file == null) {
+      promise.reject("E_FILE_NOT_FOUND", "공유할 파일을 찾을 수 없습니다.")
+      return
+    }
+    val context = reactContext.applicationContext
+    val authority = providerAuthority(context)
+    if (context.packageManager.resolveContentProvider(authority, 0) == null) {
+      promise.reject("E_NO_PROVIDER", "FileProvider($authority)를 찾을 수 없습니다.")
+      return
+    }
+    val contentUri: Uri
+    try {
+      contentUri = FileProvider.getUriForFile(context, authority, file)
+    } catch (e: Exception) {
+      promise.reject("E_URI", "공유용 파일 주소를 만들지 못했습니다.", e)
+      return
+    }
+    val mime = mimeType?.trim().orEmpty().ifEmpty { "application/octet-stream" }
+    try {
+      val intent = Intent(Intent.ACTION_SEND).apply {
+        type = mime
+        putExtra(Intent.EXTRA_STREAM, contentUri)
+        if (!title.isNullOrBlank()) putExtra(Intent.EXTRA_SUBJECT, title)
+        clipData = ClipData.newRawUri(file.name, contentUri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+      }
+      startChooser(intent, title)
+      promise.resolve(true)
+    } catch (e: ActivityNotFoundException) {
+      promise.reject("E_NO_APP", "공유할 수 있는 앱이 없습니다.", e)
+    } catch (e: Exception) {
+      promise.reject("E_SHARE_FAILED", e.message, e)
+    }
+  }
+
+  /**
+   * 사용자가 고른 텍스트 파일(백업 JSON)을 읽어 내용을 돌려준다. 취소하면 null.
+   */
+  @ReactMethod
+  fun pickTextFile(promise: Promise) {
+    val activity = reactContext.currentActivity
+    if (activity == null) {
+      promise.reject("E_NO_ACTIVITY", "화면이 준비되지 않았습니다.")
+      return
+    }
+    if (pickPromise != null) {
+      promise.reject("E_BUSY", "이미 파일 선택 화면이 열려 있습니다.")
+      return
+    }
+    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+      addCategory(Intent.CATEGORY_OPENABLE)
+      type = "*/*"
+      putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/json", "text/plain", "application/octet-stream"))
+    }
+    pickPromise = promise
+    try {
+      activity.startActivityForResult(intent, PICK_TEXT_FILE_REQUEST)
+    } catch (e: ActivityNotFoundException) {
+      pickPromise = null
+      promise.reject("E_NO_APP", "파일을 선택할 수 있는 앱이 없습니다.", e)
+    }
+  }
+
+  override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
+    if (requestCode != PICK_TEXT_FILE_REQUEST) return
+    val promise = pickPromise ?: return
+    pickPromise = null
+    val uri = data?.data
+    if (resultCode != Activity.RESULT_OK || uri == null) {
+      promise.resolve(null)
+      return
+    }
+    try {
+      val bytes = reactContext.contentResolver.openInputStream(uri)?.use { input ->
+        val buffer = java.io.ByteArrayOutputStream()
+        val chunk = ByteArray(64 * 1024)
+        var total = 0
+        while (true) {
+          val read = input.read(chunk)
+          if (read < 0) break
+          total += read
+          if (total > MAX_TEXT_FILE_BYTES) throw IllegalStateException("too large")
+          buffer.write(chunk, 0, read)
+        }
+        buffer.toByteArray()
+      }
+      if (bytes == null) {
+        promise.reject("E_READ", "파일을 읽지 못했습니다.")
+        return
+      }
+      promise.resolve(String(bytes, Charsets.UTF_8))
+    } catch (e: IllegalStateException) {
+      promise.reject("E_TOO_LARGE", "파일이 너무 큽니다.")
+    } catch (e: Exception) {
+      promise.reject("E_READ", "파일을 읽지 못했습니다.", e)
+    }
+  }
+
+  override fun onNewIntent(intent: Intent) {}
 }

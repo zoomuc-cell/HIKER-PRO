@@ -45,9 +45,13 @@ Xcode에서:
 
 ## App Store 심사 관련 주의사항
 
-- **멤버십(월간/연간 Pro, 관광객 이용권)**: iOS에서 디지털 이용권을 팔려면 **Apple 인앱 결제**를 써야 합니다 (가이드라인 3.1.1).
-  Google Play도 마찬가지로 Play 결제가 필수입니다. 현재 앱은 결제 없이 "신청"만 저장하므로 **Android·iOS 모두** 멤버십을 숨겼습니다
-  (`src/screens/ProfileScreen.tsx`의 `MEMBERSHIP_ENABLED = false`). 판매하려면 Play 결제·StoreKit(`react-native-iap`) 연동 후 `true`로 바꾸세요.
+- **멤버십(월간/연간 Pro, 관광객 이용권)**: `react-native-iap`(StoreKit / Play 결제)로 판매합니다 (가이드라인 3.1.1).
+  상품 정보를 못 불러오면 멤버십 카드가 숨겨집니다. App Store Connect에 아래 상품을 같은 ID로 만들어야 합니다.
+  - 자동 갱신 구독(같은 구독 그룹): `hikerpro_pro_monthly`, `hikerpro_pro_yearly`
+  - 소모성 상품: `hikerpro_tourist_pass` (구매 시점부터 5일, 기기에 만료 시각 저장)
+  - Android는 구독 `hikerpro_pro`(기본 요금제 `monthly`, `yearly`)와 인앱 상품 `hikerpro_tourist_pass`
+  - 서버 영수증 검증은 없으며, 구독 상태는 앱 시작 시 스토어에서 다시 확인합니다 (`src/services/ProService.ts`).
+  - 결제 화면에 자동 갱신 안내, 개인정보처리방침, Apple 표준 이용약관(EULA) 링크가 있습니다. App Store Connect 앱 설명에도 EULA 링크를 넣으세요.
 - **"준비 중" 기능**: 안내만 있던 오프라인 지도 메뉴는 삭제했고, 등산 히스토리 메뉴는 활동 기록 탭의 전체 기록으로 연결했습니다 (가이드라인 2.1).
 - **숨겨진 관리자 화면**: 프로필 사진 길게 누르기로 들어가는 관리자 화면은 등록된 기기에서만 열리지만, 심사에서 숨겨진 기능(2.3.1)으로 볼 수 있습니다. 출시 빌드에서는 제거를 권합니다.
 - **App Store Connect 개인정보 항목**: 데이터가 기기 밖으로 전송되지 않으므로 "데이터를 수집하지 않음"을 선택할 수 있습니다.

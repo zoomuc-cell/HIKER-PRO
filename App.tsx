@@ -20,7 +20,9 @@ import CouponScreen from './src/screens/CouponScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import TrackingScreen from './src/screens/TrackingScreen';
 import HikingPlanScreen from './src/screens/HikingPlanScreen';
+import StatsScreen from './src/screens/StatsScreen';
 import {isPlanImportUrl} from './src/utils/planShare';
+import {initPro} from './src/services/ProService';
 
 // Services
 
@@ -184,6 +186,16 @@ const AppTabs = () => {
             tabBarLabel: '프로필',
           }}
         />
+        {/* 숨겨진 route: 프로필 '상세 통계'(Pro)에서 진입 */}
+        <Tab.Screen
+          name="Stats"
+          component={StatsScreen}
+          options={{
+            title: '상세 통계',
+            tabBarLabel: '상세 통계',
+            tabBarButton: () => null,
+          }}
+        />
         {/* 숨겨진 route: 홈 '등산계획'에서만 진입. tabBarButton 이 null 을 반환해 하단 탭 버튼/공간이 생기지 않음 */}
         <Tab.Screen
           name="HikingPlan"
@@ -200,6 +212,11 @@ const AppTabs = () => {
 };
 
 const App = () => {
+  // 스토어 연결과 구독 상태 확인 (Google Play 결제 / Apple 인앱 결제)
+  useEffect(() => {
+    initPro();
+  }, []);
+
     return (
     <SafeAreaProvider>
       <PaperProvider>
