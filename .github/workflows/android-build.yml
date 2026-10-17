@@ -35,6 +35,9 @@ jobs:
       - name: Install JS dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Fix old Android libraries for AGP 8+ (CI only)
+        run: python3 .github/scripts/fix-android-libs.py .
+
       - name: Create CI-only gradle.properties and signing key
         working-directory: android
         run: |
