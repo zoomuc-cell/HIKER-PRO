@@ -2,8 +2,8 @@
 # Setup steps (Korean, step by step): ios/README.md › "Codemagic으로 TestFlight 올리기".
 #
 # Needs in Codemagic:
-#   - App Store Connect API key under Settings › Integrations › Developer Portal, named exactly: weekline-asc
-#     (the same Apple team key WEEKLINE uses; one key works for every app in the team)
+#   - App Store Connect API key under Settings › Integrations › Developer Portal, named exactly: N8CMWWQ693
+#     (the key added in Codemagic; the same Apple team key WEEKLINE uses works for every app in the team)
 #   - Environment variable group "hikerpro_signing" with CERTIFICATE_PRIVATE_KEY (secret)
 #   - (optional) APP_STORE_APPLE_ID in the same group: the app's Apple ID number from App Store Connect
 workflows:
@@ -12,7 +12,7 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 90
     integrations:
-      app_store_connect: weekline-asc
+      app_store_connect: N8CMWWQ693
     environment:
       groups:
         - hikerpro_signing
