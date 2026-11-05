@@ -94,9 +94,9 @@ GitHub Actions로 올리면 번호가 더 작아 거절될 수 있습니다.
    설명 `Hiker Pro`, Bundle ID(Explicit) `com.hikerpro.app` › **In-App Purchase** 체크 확인 › 등록.
 2. **App Store Connect에 앱 만들기**: 앱 › **+** › 신규 앱 › 플랫폼 iOS, 이름 Hiker Pro(이미 쓰는 이름이면 HIKER PRO 등산 기록 처럼),
    기본 언어 한국어, 번들 ID `com.hikerpro.app`, SKU `hikerpro`. 만든 뒤 **앱 정보**의 **Apple ID**(숫자)를 적어 둡니다.
-3. **API 키**: WEEKLINE 때 Codemagic에 `weekline-asc` 이름으로 넣은 키를 그대로 씁니다 (같은 Apple 팀이면 모든 앱에 쓸 수 있음).
+3. **API 키**: Codemagic에 등록된 키 **`N8CMWWQ693`** 을 그대로 씁니다 (같은 Apple 팀이면 모든 앱에 쓸 수 있음). 키를 새로 넣어 이름이 바뀌면 `codemagic.yaml` 의 `app_store_connect:` 값도 같은 이름으로 바꿔야 합니다.
    아직 없다면 App Store Connect › 사용자 및 액세스 › **통합** › App Store Connect API › **팀 키** › **+** (액세스 **관리자**)로 만들고,
-   Codemagic 왼쪽 **Settings › Integrations › Developer Portal › Connect** 에서 이름 **`weekline-asc`**, Issuer ID, Key ID, `.p8` 파일을 넣습니다.
+   Codemagic 왼쪽 **Settings › Integrations › Developer Portal › Connect** 에서 Issuer ID, Key ID, `.p8` 파일을 넣습니다.
 4. **Codemagic 환경 변수**: Applications › HIKER-PRO › **Environment variables**
    - Variable name `CERTIFICATE_PRIVATE_KEY`, Value는 WEEKLINE 때 만든 `weekline_cert_key` 파일 내용 전체(같은 키를 쓰면 배포 인증서를 하나로 같이 씀),
      Group `hikerpro_signing`, **Secret** 체크 › Add
