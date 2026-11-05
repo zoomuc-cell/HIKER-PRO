@@ -9,32 +9,23 @@ import {
   ScrollView,
   TextInput,
   Modal,
-  Switch,
   Share,
   Linking,
   Image,
-  Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {launchImageLibrary, launchCamera} from 'react-native-image-picker';
-import DeviceInfo from 'react-native-device-info';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 import ProUpgradeModal from '../components/ProUpgradeModal';
-import {setAdminOverride, usePro} from '../services/ProService';
+import {retryStore, usePro} from '../services/ProService';
+import {loadActivitySummariesSafe} from '../services/ActivityStore';
+import {resolveAppFileUri, toStoredFileRef} from '../utils/appFiles';
 import {BackupError, exportBackup, pickBackup, restoreBackup} from '../utils/backup';
 import {shareErrorMessage} from '../utils/nativeShare';
 
-// Android: ANDROID_ID, iOS: identifierForVendor (앱을 삭제 후 재설치하면 바뀜)
-const ADMIN_DEVICE_IDS = ['9da67a462cc43660'];
-
-const IS_IOS = Platform.OS === 'ios';
-// 앱 데이터 초기화 때도 지우지 않는 키 (구매한 관광객 이용권·구독 상태)
-const KEEP_ON_RESET_KEYS = ['hiker_entitlement'];
-
 // 예전 버전이 기본값으로 저장하던 개발자 이메일. 사용자가 입력한 값이 아니므로 표시하지 않는다.
 const LEGACY_DEFAULT_EMAIL = 'admin@auratechnologies.kr';
-const HISTORY_KEY = 'hiker_activity_history';
 
 const DEFAULT_USER = {
   name: '사용자',
@@ -65,9 +56,8 @@ const hikingLevelFor = (hikes: number) => {
 
 const loadHikingStats = async (): Promise<HikingStats> => {
   try {
-    const raw = await AsyncStorage.getItem(HISTORY_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    const hikes = (Array.isArray(parsed) ? parsed : []).filter(
+    const parsed = await loadActivitySummariesSafe();
+    const hikes = parsed.filter(
       (item: any) => item?.activityType === 'hiking',
     );
     const distanceM = hikes.reduce(
@@ -82,14 +72,6 @@ const loadHikingStats = async (): Promise<HikingStats> => {
   } catch (e) {
     return EMPTY_STATS;
   }
-};
-
-const hashPin = (s: string) => {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) {
-    h = ((h << 5) + h + s.charCodeAt(i)) | 0;
-  }
-  return 'h' + (h >>> 0).toString(36);
 };
 
 const formatDateText = (iso?: string | null) => {
@@ -131,8 +113,6 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
   const [editHeight, setEditHeight] = useState('');
   const [editWeight, setEditWeight] = useState('');
 
-  const [notiVisible, setNotiVisible] = useState(false);
-  const [notiEnabled, setNotiEnabled] = useState(true);
 
   const [privacyVisible, setPrivacyVisible] = useState(false);
   const [helpVisible, setHelpVisible] = useState(false);
@@ -145,16 +125,10 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
   const [upgradeFeature, setUpgradeFeature] = useState<string | null>(null);
   const pro = usePro();
 
-  const [adminStage, setAdminStage] = useState<string | null>(null);
-  const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState('');
-  const [adminDevId, setAdminDevId] = useState('');
-
   useEffect(() => {
     const load = async () => {
       try {
         const savedUser = await AsyncStorage.getItem('hiker_user');
-        const savedNoti = await AsyncStorage.getItem('hiker_noti');
         const savedAvatar = await AsyncStorage.getItem('hiker_avatar');
         const savedContact = await AsyncStorage.getItem('hiker_emergency_contact');
 
@@ -164,9 +138,6 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
             parsedUser.email = '';
           }
           setUser(parsedUser);
-        }
-        if (savedNoti !== null) {
-          setNotiEnabled(savedNoti === '1');
         }
         if (savedAvatar) {
           setAvatarUri(savedAvatar);
@@ -186,7 +157,8 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
   const saveAvatarBase64 = async (base64: string) => {
     const dest = ReactNativeBlobUtil.fs.dirs.DocumentDir + '/hiker_avatar.jpg';
     await ReactNativeBlobUtil.fs.writeFile(dest, base64, 'base64');
-    const nextUri = 'file://' + dest + '?t=' + Date.now();
+    // iOS 는 앱 업데이트 때 앱 폴더 경로가 바뀌므로 Documents 아래 상대 경로만 저장한다
+    const nextUri = toStoredFileRef(dest) + '?t=' + Date.now();
     await AsyncStorage.setItem('hiker_avatar', nextUri);
     setAvatarUri(nextUri);
   };
@@ -338,11 +310,6 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
     Alert.alert('완료', '프로필이 저장되었습니다.');
   };
 
-  const toggleNotifications = async (value: boolean) => {
-    setNotiEnabled(value);
-    await AsyncStorage.setItem('hiker_noti', value ? '1' : '0');
-  };
-
   const openContact = () => {
     setContactVisible(true);
   };
@@ -377,6 +344,13 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
     }
     setUpgradeFeature(featureName);
     setUpgVisible(true);
+  };
+
+  const retryMembership = async () => {
+    const ok = await retryStore();
+    if (!ok) {
+      Alert.alert('연결 실패', '스토어에 연결하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.');
+    }
   };
 
   const openMembership = () => {
@@ -444,99 +418,6 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
     );
   };
 
-  const showProStatus = () => {
-    const rows = [
-      '스토어 상품: ' + (pro.storeAvailable ? pro.plans.map(p => `${p.title} ${p.price}`).join(', ') : '불러오지 못함'),
-      'Pro 상태: ' + (pro.source || '없음'),
-    ];
-    if (pro.passExpiresAt) {
-      rows.push('관광객 이용권 만료: ' + new Date(pro.passExpiresAt).toLocaleString());
-    }
-    Alert.alert('결제 상태', rows.join('\n'));
-  };
-
-  const togglePro = async () => {
-    const next = pro.source !== 'admin';
-    await setAdminOverride(next);
-    Alert.alert('완료', next ? '관리자 설정으로 Pro가 활성화되었습니다.' : '관리자 Pro 설정을 껐습니다.');
-  };
-
-  const resetPin = async () => {
-    await AsyncStorage.removeItem('admin_pin');
-    setPinInput('');
-    setPinError('');
-    setAdminStage('setPin');
-  };
-
-  const resetAppData = () => {
-    Alert.alert('앱 데이터 초기화', '앱의 저장 데이터를 모두 지웁니다. 계속할까요?', [
-      {text: '취소', style: 'cancel'},
-      {
-        text: '초기화',
-        style: 'destructive',
-        onPress: async () => {
-          // 구매한 이용권·구독 상태는 남기고 나머지만 지운다
-          const keys = await AsyncStorage.getAllKeys();
-          await AsyncStorage.multiRemove(keys.filter(key => KEEP_ON_RESET_KEYS.indexOf(key) < 0));
-          await setAdminOverride(false);
-          setStats(EMPTY_STATS);
-          setUser(DEFAULT_USER);
-          setAvatarUri(null);
-          setNotiEnabled(true);
-          setContactName('');
-          setContactPhone('');
-          setAdminStage(null);
-          Alert.alert('완료', '초기화되었습니다.');
-        },
-      },
-    ]);
-  };
-
-  const enterAdmin = async () => {
-    let devId = '';
-    try {
-      devId = (IS_IOS ? await DeviceInfo.getUniqueId() : await DeviceInfo.getAndroidId()) || '';
-    } catch (e) {
-      devId = '';
-    }
-    const normId = String(devId).trim().toLowerCase();
-    const allow = ADMIN_DEVICE_IDS.map(x => String(x).trim().toLowerCase());
-    if (!normId || allow.indexOf(normId) < 0) {
-      // iOS 기기 ID 는 ADMIN_DEVICE_IDS 에 추가해야 하므로 안내에 표시
-      Alert.alert('접근 거부', IS_IOS ? '관리자 기기가 아닙니다.\n기기 ID: ' + normId : '관리자 기기가 아닙니다.');
-      return;
-    }
-    setAdminDevId(normId);
-    const saved = await AsyncStorage.getItem('admin_pin');
-    setPinInput('');
-    setPinError('');
-    setAdminStage(saved ? 'pin' : 'setPin');
-  };
-
-  const submitPin = async () => {
-    const saved = await AsyncStorage.getItem('admin_pin');
-    if (adminStage === 'setPin') {
-      if (pinInput.length < 4) {
-        setPinError('4자리 이상 입력하세요.');
-        return;
-      }
-      await AsyncStorage.setItem('admin_pin', hashPin(pinInput));
-      setPinInput('');
-      setPinError('');
-      setAdminStage('panel');
-      return;
-    }
-    if (adminStage === 'pin') {
-      if (hashPin(pinInput) === saved) {
-        setPinInput('');
-        setPinError('');
-        setAdminStage('panel');
-      } else {
-        setPinError('PIN이 틀렸습니다.');
-      }
-    }
-  };
-
   const menuItems = [
     {
       key: 'edit',
@@ -558,13 +439,6 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
       title: '기록 백업·복원' + (pro.isPro ? '' : ' (Pro)'),
       sub: '파일로 저장하고 다른 기기에서 불러오기',
       onPress: () => requirePro('기록 백업·복원', openBackupMenu),
-    },
-    {
-      key: 'noti',
-      icon: 'bell-outline',
-      title: '알림 설정',
-      sub: '알림 수신 여부를 조정합니다',
-      onPress: () => setNotiVisible(true),
     },
     {
       key: 'contact',
@@ -609,11 +483,9 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.avatarWrap}
-            onPress={openAvatarMenu}
-            onLongPress={enterAdmin}
-            delayLongPress={1500}>
+            onPress={openAvatarMenu}>
             {avatarUri ? (
-              <Image source={{uri: avatarUri}} style={styles.avatar} />
+              <Image source={{uri: resolveAppFileUri(avatarUri)}} style={styles.avatar} />
             ) : (
               <View style={styles.avatar}>
                 <Icon name="account" size={42} color="#FFFFFF" />
@@ -660,22 +532,30 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
           </View>
         </View>
 
-        {/* 스토어에서 상품을 불러왔거나 이미 Pro 인 경우에만 멤버십 안내 표시 */}
-        {pro.storeAvailable || pro.isPro ? (
+        {/* 멤버십 안내. 스토어 연결에 실패하면 '다시 시도' 버튼을 함께 보여 준다 */}
         <View style={styles.card}>
           <View style={styles.cardHead}>
             <Text style={styles.cardTitle}>멤버십</Text>
-            <TouchableOpacity onPress={openMembership}>
-              <Text style={styles.cardLink}>{pro.isPro ? '관리' : 'Pro 알아보기'}</Text>
-            </TouchableOpacity>
+            {pro.storeAvailable || pro.isPro ? (
+              <TouchableOpacity onPress={openMembership}>
+                <Text style={styles.cardLink}>{pro.isPro ? '관리' : 'Pro 알아보기'}</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity onPress={retryMembership} disabled={!pro.ready || pro.busy}>
+                <Text style={styles.cardLink}>{pro.ready ? '다시 시도' : '불러오는 중...'}</Text>
+              </TouchableOpacity>
+            )}
           </View>
           <Text style={styles.cardDesc}>
             {pro.isPro
               ? '상세 통계, GPX 경로 내보내기, 기록 백업·복원을 사용할 수 있습니다.'
-              : '상세 통계 · GPX 경로 내보내기 · 기록 백업·복원 (월간/연간 구독 또는 5일 관광객 이용권)'}
+              : pro.storeAvailable
+                ? '상세 통계 · GPX 경로 내보내기 · 기록 백업·복원 (월간/연간 구독 또는 5일 관광객 이용권)'
+                : pro.ready
+                  ? '스토어에서 상품 정보를 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.'
+                  : '스토어에서 상품 정보를 불러오는 중입니다.'}
           </Text>
         </View>
-        ) : null}
 
         <View style={styles.card}>
           {menuItems.map(item => (
@@ -823,21 +703,6 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
         </View>
       </Modal>
 
-      <Modal visible={notiVisible} transparent animationType="fade">
-        <View style={styles.modalBack}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>알림 설정</Text>
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>푸시 알림 받기</Text>
-              <Switch value={notiEnabled} onValueChange={toggleNotifications} />
-            </View>
-            <TouchableOpacity style={styles.closeBtn} onPress={() => setNotiVisible(false)}>
-              <Text style={styles.closeBtnText}>닫기</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
       <Modal visible={contactVisible} transparent animationType="fade">
         <View style={styles.modalBack}>
           <View style={styles.modalCard}>
@@ -905,78 +770,6 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
         onClose={() => setUpgVisible(false)}
       />
 
-      <Modal visible={!!adminStage} transparent animationType="fade">
-        <View style={styles.modalBack}>
-          <View style={styles.modalCard}>
-            {adminStage === 'setPin' && (
-              <>
-                <Text style={styles.modalTitle}>관리자 PIN 설정</Text>
-                <TextInput
-                  style={styles.input}
-                  value={pinInput}
-                  onChangeText={setPinInput}
-                  keyboardType="number-pad"
-                  secureTextEntry
-                  placeholder="4자리 이상"
-                />
-                {!!pinError && <Text style={styles.errorText}>{pinError}</Text>}
-                <TouchableOpacity style={styles.primaryBtn} onPress={submitPin}>
-                  <Text style={styles.primaryBtnText}>저장</Text>
-                </TouchableOpacity>
-              </>
-            )}
-
-            {adminStage === 'pin' && (
-              <>
-                <Text style={styles.modalTitle}>관리자 PIN 입력</Text>
-                <Text style={styles.bodyText}>기기 ID: {adminDevId}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={pinInput}
-                  onChangeText={setPinInput}
-                  keyboardType="number-pad"
-                  secureTextEntry
-                  placeholder="PIN 입력"
-                />
-                {!!pinError && <Text style={styles.errorText}>{pinError}</Text>}
-                <TouchableOpacity style={styles.primaryBtn} onPress={submitPin}>
-                  <Text style={styles.primaryBtnText}>확인</Text>
-                </TouchableOpacity>
-              </>
-            )}
-
-            {adminStage === 'panel' && (
-              <>
-                <Text style={styles.modalTitle}>관리자 패널</Text>
-
-                <TouchableOpacity style={styles.primaryBtn} onPress={togglePro}>
-                  <Text style={styles.primaryBtnText}>
-                    {pro.source === 'admin' ? '관리자 Pro 끄기' : '관리자 Pro 켜기 (테스트)'}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.primaryBtn} onPress={showProStatus}>
-                  <Text style={styles.primaryBtnText}>결제 상태 확인</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.primaryBtn} onPress={resetPin}>
-                  <Text style={styles.primaryBtnText}>PIN 재설정</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.primaryBtn, styles.dangerBtn]}
-                  onPress={resetAppData}>
-                  <Text style={styles.primaryBtnText}>앱 데이터 초기화</Text>
-                </TouchableOpacity>
-              </>
-            )}
-
-            <TouchableOpacity style={styles.closeBtn} onPress={() => setAdminStage(null)}>
-              <Text style={styles.closeBtnText}>닫기</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 };

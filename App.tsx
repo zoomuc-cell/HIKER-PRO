@@ -13,10 +13,10 @@ import {
 import {Provider as PaperProvider} from 'react-native-paper';
 
 // Screens
+// 맛집·쿠폰 화면(RestaurantListScreen, CouponScreen)은 예시 데이터뿐이라 출시 버전에서 뺐다.
+// 실제 제휴 가게 데이터가 생기면 다시 탭에 넣는다.
 import HomeScreen from './src/screens/HomeScreen';
 import MapScreen from './src/screens/MapScreen';
-import RestaurantListScreen from './src/screens/RestaurantListScreen';
-import CouponScreen from './src/screens/CouponScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import TrackingScreen from './src/screens/TrackingScreen';
 import HikingPlanScreen from './src/screens/HikingPlanScreen';
@@ -95,10 +95,6 @@ const AppTabs = () => {
               iconName = focused ? 'map-marker' : 'map-marker-outline';
             } else if (route.name === 'Track') {
               iconName = 'walk';
-            } else if (route.name === 'Restaurants') {
-              iconName = 'silverware-fork-knife';
-            } else if (route.name === 'Coupons') {
-              iconName = focused ? 'ticket' : 'ticket-outline';
             } else if (route.name === 'Profile') {
               iconName = focused ? 'account' : 'account-outline';
             }
@@ -160,22 +156,6 @@ const AppTabs = () => {
           options={{
             title: '활동 기록',
             tabBarLabel: '활동 기록',
-          }}
-        />
-        <Tab.Screen
-          name="Restaurants"
-          component={RestaurantListScreen}
-          options={{
-            title: '맛집',
-            tabBarLabel: '맛집',
-          }}
-        />
-        <Tab.Screen
-          name="Coupons"
-          component={CouponScreen}
-          options={{
-            title: '쿠폰',
-            tabBarLabel: '쿠폰',
           }}
         />
         <Tab.Screen

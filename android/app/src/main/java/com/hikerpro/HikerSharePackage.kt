@@ -9,7 +9,7 @@ import com.facebook.react.uimanager.ViewManager
 class HikerSharePackage : ReactPackage {
   @Deprecated("Legacy ReactPackage registration (same as AdminIdPackage)")
   override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> =
-      listOf(HikerShareModule(reactContext))
+      listOf(HikerShareModule(reactContext), HikerTrackingModule(reactContext))
 
   override fun createViewManagers(
       reactContext: ReactApplicationContext

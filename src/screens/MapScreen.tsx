@@ -3,28 +3,18 @@ import {View, StyleSheet, Text, TouchableOpacity, Alert, Platform} from 'react-n
 import MapView, {Marker, Polyline, PROVIDER_GOOGLE} from 'react-native-maps';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import LocationService from '../services/LocationService';
-import {restaurants} from '../assets/data/restaurants';
 type Coordinate = {
   latitude: number;
   longitude: number;
 };
 
-type GNSSStatus = {
-  activeGNSS: string[];
-  accuracy: number;
-  accuracyLevel: string;
-  satelliteCount: number;
-  usingSensorFusion: boolean;
-};
 
 
-const MapScreen = ({navigation, route}: {navigation: any; route?: any}) => {
+const MapScreen = ({route}: {route?: any}) => {
   const mapRef = useRef<MapView | null>(null);
   const [currentLocation, setCurrentLocation] = useState<Coordinate | null>(null);
   const [altitude, setAltitude] = useState(0);
   const [trail, setTrail] = useState<Coordinate[]>([]);
-  const [nearbyRestaurants, setNearbyRestaurants] = useState<typeof restaurants>([]);
-  const [gnssStatus, setGnssStatus] = useState<GNSSStatus | null>(null);
   const [accuracy, setAccuracy] = useState(999);
   const [locating, setLocating] = useState(false);
 
@@ -38,50 +28,14 @@ const MapScreen = ({navigation, route}: {navigation: any; route?: any}) => {
       setCurrentLocation(nextLocation);
       setAltitude(location.altitude || 0);
       setAccuracy(location.accuracy || 999);
-      setGnssStatus(LocationService.getGNSSStatus());
-      setTrail(prev => [...prev, nextLocation]);
+      // 지도를 오래 켜 두어도 메모리가 계속 늘지 않도록 최근 2000개 지점만 표시
+      setTrail(prev => [...prev.slice(-1999), nextLocation]);
     });
 
     return () => {
       locationSubscription.remove();
     };
   }, []);
-
-  useEffect(() => {
-    if (currentLocation) {
-      setNearbyRestaurants(findNearbyRestaurants(currentLocation));
-    }
-  }, [currentLocation]);
-
-  const findNearbyRestaurants = (location: Coordinate) => {
-    return restaurants.filter(restaurant => {
-      const distance = getDistance(
-        location.latitude,
-        location.longitude,
-        restaurant.latitude,
-        restaurant.longitude
-      );
-      return distance < 5; // 5km 이내
-    });
-  };
-
-  const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 6371; // 지구 반경 (km)
-    const dLat = deg2rad(lat2 - lat1);
-    const dLon = deg2rad(lon2 - lon1);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(deg2rad(lat1)) *
-        Math.cos(deg2rad(lat2)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  };
-
-  const deg2rad = (deg: number): number => {
-    return deg * (Math.PI / 180);
-  };
 
   const centerOnUser = async () => {
     if (currentLocation) {
@@ -162,24 +116,6 @@ const MapScreen = ({navigation, route}: {navigation: any; route?: any}) => {
           />
         )}
 
-        {/* 二쇰? 留쏆쭛 留덉빱 */}
-        {nearbyRestaurants.map((restaurant, index) => (
-          <Marker
-            key={index}
-            coordinate={{
-              latitude: restaurant.latitude,
-              longitude: restaurant.longitude,
-            }}
-            title={restaurant.name}
-            description={`${restaurant.cuisine} · ${restaurant.distance || 'N/A'}`}
-            onCalloutPress={() => {
-              navigation.navigate('Restaurants', {
-                restaurant: restaurant,
-              });
-            }}>
-            <Icon name="silverware-fork-knife" size={30} color="#FF5722" />
-          </Marker>
-        ))}
       </MapView>
 
       {/* 怨좊룄 & GNSS ?뺣낫 */}
@@ -187,30 +123,19 @@ const MapScreen = ({navigation, route}: {navigation: any; route?: any}) => {
         <Icon name="elevation-rise" size={24} color="#2E7D32" />
         <View style={styles.altitudeInfo}>
           <Text style={styles.altitudeText}>{altitude.toFixed(1)}m</Text>
-          {accuracy < 20 && (
-            <View style={styles.gnssRow}>
-              <Icon name="satellite-variant" size={14} color="#4CAF50" />
-              <Text style={styles.gnssText}>{gnssStatus?.satelliteCount || 0}개</Text>
-            </View>
-          )}
         </View>
-        {accuracy < 10 && (
+        {/* 위성 개수·GNSS 종류는 기기에서 실제로 알 수 없어 표시하지 않고, 위치 정확도만 보여 준다 */}
+        {accuracy < 999 && (
           <View style={styles.accuracyBadge}>
-            <Icon name="check-circle" size={16} color="#4CAF50" />
-            <Text style={styles.accuracyText}>±{accuracy.toFixed(0)}m</Text>
+            <Icon
+              name={accuracy <= 20 ? 'check-circle' : 'alert-circle-outline'}
+              size={16}
+              color={accuracy <= 20 ? '#4CAF50' : '#F57C00'}
+            />
+            <Text style={styles.accuracyText}>위치 정확도 ±{accuracy.toFixed(0)}m</Text>
           </View>
         )}
       </View>
-
-      {/* Multi-GNSS ?곹깭 ?쒖떆 */}
-      {gnssStatus?.activeGNSS && gnssStatus.activeGNSS.length > 0 && (
-        <View style={styles.gnssCard}>
-          <Icon name="satellite-uplink" size={20} color="#2196F3" />
-          <Text style={styles.gnssStatusText}>
-            {gnssStatus.activeGNSS.join(' + ')}
-          </Text>
-        </View>
-      )}
 
       {/* 以묒떖 踰꾪듉 */}
       <TouchableOpacity style={[styles.centerButton, styles.centerButtonLabeled]} onPress={centerOnUser}>
@@ -225,13 +150,6 @@ const MapScreen = ({navigation, route}: {navigation: any; route?: any}) => {
         </View>
       )}
 
-      {/* 二쇰? 留쏆쭛 媛쒖닔 */}
-      {nearbyRestaurants.length > 0 && (
-        <View style={styles.restaurantBadge}>
-          <Icon name="silverware-fork-knife" size={20} color="#fff" />
-          <Text style={styles.badgeText}>{nearbyRestaurants.length}개 맛집</Text>
-        </View>
-      )}
     </View>
   );
 };

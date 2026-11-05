@@ -15,7 +15,7 @@ node_require('react-native-permissions/scripts/setup.rb')
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
-# 앱에서 실제로 요청하는 권한만 포함 (QR 스캐너 카메라, 위치)
+# 앱에서 실제로 요청하는 권한만 포함 (사진 촬영 카메라, 위치)
 setup_permissions([
   'Camera',
   'LocationWhenInUse',

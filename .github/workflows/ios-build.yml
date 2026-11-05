@@ -13,6 +13,11 @@ on:
       - 'react-native.config.js'
       - '.github/workflows/ios-build.yml'
   workflow_dispatch:
+    inputs:
+      testflight:
+        description: 'TestFlight 에 서명된 빌드 올리기 (App Store 비밀값 4개 필요, ios/README.md 참고)'
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -90,4 +95,71 @@ jobs:
             ios/build.log
             ios/app.log
             ios/launch.png
+          if-no-files-found: ignore
+
+  testflight:
+    # Actions → iOS build → Run workflow 에서 testflight 를 체크하면 실행된다
+    if: github.event_name == 'workflow_dispatch' && inputs.testflight
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the App Store secrets are set
+        run: |
+          for v in TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
+            if [ -z "${!v}" ]; then echo "::error::Secret for $v is missing (see ios/README.md)"; exit 1; fi
+          done
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install JS dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Install CocoaPods
+        working-directory: ios
+        run: pod install
+
+      - name: Archive and upload to TestFlight (automatic signing with an App Store Connect API key)
+        working-directory: ios
+        run: |
+          set -o pipefail
+          echo "$ASC_KEY_P8" > "$RUNNER_TEMP/asc.p8"
+          AUTH="-allowProvisioningUpdates -authenticationKeyPath $RUNNER_TEMP/asc.p8 -authenticationKeyID $ASC_KEY_ID -authenticationKeyIssuerID $ASC_ISSUER_ID"
+          # 빌드 번호는 올릴 때마다 커져야 하므로 실행 번호 + 100 (지금 프로젝트 값 9 보다 항상 큼)
+          BUILD_NUMBER=$(( ${{ github.run_number }} + 100 ))
+          echo "Build number: $BUILD_NUMBER"
+          xcodebuild -workspace HikerPro.xcworkspace -scheme HikerPro -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/HikerPro.xcarchive" \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            $AUTH archive > archive.log 2>&1 || { grep -n -E "error:|ld: " archive.log | head -80; tail -n 40 archive.log; exit 1; }
+          tail -n 5 archive.log
+          cat > "$RUNNER_TEMP/export.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/HikerPro.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" $AUTH | tail -n 40
+
+      - name: Upload archive log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-testflight-log
+          path: ios/archive.log
           if-no-files-found: ignore

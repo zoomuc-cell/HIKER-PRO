@@ -1,9 +1,11 @@
 // 기록 백업·복원 (Pro)
 // 활동 기록, 등산 계획, 프로필 등 기기에 저장된 데이터를 JSON 파일 하나로 내보내고 다시 불러온다.
-// 사진 파일 자체는 용량 문제로 포함하지 않는다. 결제·관리자 정보도 포함하지 않는다.
+// 활동 경로는 활동마다 따로 저장되므로(hiker_route_<id>) 그 키들도 함께 담는다.
+// 사진 파일 자체는 용량 문제로 포함하지 않는다. 결제 정보도 포함하지 않는다.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 import {pickTextFile, shareFileContent} from './nativeShare';
+import {ROUTE_KEY_PREFIX, listRouteKeys} from '../services/ActivityStore';
 
 const BACKUP_APP = 'HIKERPRO';
 const BACKUP_VERSION = 1;
@@ -29,7 +31,8 @@ type BackupFile = {
 const pad = (n: number) => String(n).padStart(2, '0');
 
 export const exportBackup = async () => {
-  const pairs = await AsyncStorage.multiGet(BACKUP_KEYS);
+  const routeKeys = await listRouteKeys();
+  const pairs = await AsyncStorage.multiGet([...BACKUP_KEYS, ...routeKeys]);
   const data: Record<string, string> = {};
   pairs.forEach(([key, value]) => {
     if (typeof value === 'string') {
@@ -86,10 +89,11 @@ export const pickBackup = async (): Promise<ParsedBackup | null> => {
   if (typeof parsed.version !== 'number' || parsed.version > BACKUP_VERSION) {
     throw new BackupError('이 앱 버전에서 열 수 없는 백업 파일입니다. 앱을 업데이트해 주세요.');
   }
-  // 허용된 키의 문자열 값만 사용 (결제·관리자 정보 등은 복원하지 않음)
+  // 허용된 키의 문자열 값만 사용 (결제 정보 등은 복원하지 않음)
   const data: Record<string, string> = {};
-  BACKUP_KEYS.forEach(key => {
-    if (typeof parsed.data[key] === 'string') {
+  Object.keys(parsed.data).forEach(key => {
+    const allowed = BACKUP_KEYS.indexOf(key) >= 0 || key.startsWith(ROUTE_KEY_PREFIX);
+    if (allowed && typeof parsed.data[key] === 'string') {
       data[key] = parsed.data[key];
     }
   });

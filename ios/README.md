@@ -41,20 +41,40 @@ Xcode에서:
 | 위치 권한 | 정밀 위치 + 백그라운드 위치 | "앱을 사용하는 동안"만 요청. 활동 기록 중에는 화면이 꺼져도 계속 기록되며 상태 막대에 파란색 표시 |
 | 기록 중이 아닐 때 | — | 앱이 백그라운드로 가면 위치 수신을 멈춤 (배터리·심사 기준) |
 | 공유 | ACTION_SEND 선택 창 | iOS 공유 시트 |
-| 관리자 기기 ID | ANDROID_ID | identifierForVendor. 아이폰에서 프로필 사진을 1.5초 길게 누르면 "접근 거부" 창에 기기 ID가 표시되니, `src/screens/ProfileScreen.tsx`의 `ADMIN_DEVICE_IDS`에 추가하세요. 앱을 삭제 후 다시 설치하면 ID가 바뀝니다. |
+| 기록 중 화면 꺼짐 | 포그라운드 서비스(상단 '활동 기록 중' 알림) | 백그라운드 위치 모드 (상태 막대 파란색 표시) |
+| 5일 이용권 | 관리되는 인앱 상품 (구매 후 소비) | 비갱신형 구독 (구매 복원 가능) |
 
 ## App Store 심사 관련 주의사항
 
 - **멤버십(월간/연간 Pro, 관광객 이용권)**: `react-native-iap`(StoreKit / Play 결제)로 판매합니다 (가이드라인 3.1.1).
-  상품 정보를 못 불러오면 멤버십 카드가 숨겨집니다. App Store Connect에 아래 상품을 같은 ID로 만들어야 합니다.
-  - 자동 갱신 구독(같은 구독 그룹): `hikerpro_pro_monthly`, `hikerpro_pro_yearly`
-  - 소모성 상품: `hikerpro_tourist_pass` (구매 시점부터 5일, 기기에 만료 시각 저장)
+  App Store Connect에 아래 상품을 같은 ID로 만들어야 합니다.
+  - 자동 갱신 구독(같은 구독 그룹 하나에): `hikerpro_pro_monthly`(1개월), `hikerpro_pro_yearly`(1년)
+  - **비갱신형 구독(Non-Renewing Subscription)**: `hikerpro_tourist_pass` — 소모성(Consumable)으로 만들면 안 됩니다.
+    기간이 정해진 이용권은 Apple 규정상 비갱신형 구독이어야 하고, 한 번 만든 상품의 유형은 바꿀 수 없습니다.
+    앱은 구매 시각 + 5일로 만료를 계산하며, 재설치·기기 변경 뒤 '구매 복원'으로 남은 기간이 되살아납니다.
   - Android는 구독 `hikerpro_pro`(기본 요금제 `monthly`, `yearly`)와 인앱 상품 `hikerpro_tourist_pass`
-  - 서버 영수증 검증은 없으며, 구독 상태는 앱 시작 시 스토어에서 다시 확인합니다 (`src/services/ProService.ts`).
-  - 결제 화면에 자동 갱신 안내, 개인정보처리방침, Apple 표준 이용약관(EULA) 링크가 있습니다. App Store Connect 앱 설명에도 EULA 링크를 넣으세요.
-- **"준비 중" 기능**: 안내만 있던 오프라인 지도 메뉴는 삭제했고, 등산 히스토리 메뉴는 활동 기록 탭의 전체 기록으로 연결했습니다 (가이드라인 2.1).
-- **숨겨진 관리자 화면**: 프로필 사진 길게 누르기로 들어가는 관리자 화면은 등록된 기기에서만 열리지만, 심사에서 숨겨진 기능(2.3.1)으로 볼 수 있습니다. 출시 빌드에서는 제거를 권합니다.
+  - 서버 영수증 검증은 없으며, 구독 상태는 앱 시작·구매 복원 때 스토어에서 다시 확인합니다 (`src/services/ProService.ts`).
+  - 스토어 연결에 실패하면 프로필의 멤버십 카드와 결제 창에 '다시 시도' 버튼이 나옵니다.
+  - 결제 화면에 자동 갱신 안내, 구매 복원, 개인정보처리방침, Apple 표준 이용약관(EULA) 링크가 있습니다. App Store Connect 앱 설명에도 EULA 링크를 넣으세요.
+- **예시 데이터 화면 제거**: 맛집·쿠폰 탭(가상의 가게·전화번호·쿠폰)은 출시 버전에서 뺐습니다 (가이드라인 2.1, 2.3). 실제 제휴 데이터가 생기면 `App.tsx`에 다시 넣으세요. QR 스캐너(react-native-camera)도 iOS에 넣지 않아 마이크 권한 문구가 필요 없습니다.
+- **숨겨진 관리자 화면 제거**: 결제 없이 Pro를 켜던 관리자 화면은 지웠습니다. 결제 테스트는 TestFlight 샌드박스 계정으로 하세요.
 - **App Store Connect 개인정보 항목**: 데이터가 기기 밖으로 전송되지 않으므로 "데이터를 수집하지 않음"을 선택할 수 있습니다.
-- **심사 메모 예시**: "Background location is used only while the user is recording an activity started with the Start button on the Activity tab. It stops when the activity ends."
-- **개인정보처리방침 URL**: `https://zoomuc-cell.github.io/HIKER-PRO/privacy_policy.html` (이 브랜치의 `privacy_policy.html`을 main에 병합해야 iOS 내용이 반영됩니다)
-- **앱 아이콘**: Android 아이콘(432px)을 키워서 만들었습니다. 원본 고해상도(1024×1024) 파일이 있으면 교체하세요.
+- **심사 메모**: "Location is used in the background only while the user is recording an activity started with the Start button on the Activity tab. It stops when the activity ends. No account or login is required. Pro features can be bought with the in-app purchases in Profile > Membership."
+- **개인정보처리방침 URL**: `https://zoomuc-cell.github.io/HIKER-PRO/privacy_policy.html` (PR #1을 main에 병합해야 새 내용이 반영됩니다)
+- **앱 아이콘**: `Images.xcassets/AppIcon.appiconset/AppIcon-1024.png` (1024×1024, 투명 배경 없이)
+
+## TestFlight 자동 업로드
+
+GitHub → **Actions → iOS build → Run workflow** 에서 **testflight**를 체크하고 실행하면, 시뮬레이터 빌드 확인 뒤
+서명된 빌드를 만들어 App Store Connect(TestFlight)에 올립니다. 빌드 번호는 실행할 때마다 자동으로 커집니다.
+
+처음 한 번, 저장소 **Settings → Secrets and variables → Actions**에 아래 4개를 넣어야 합니다 (WEEKLINE과 같은 값을 써도 됩니다).
+
+| 이름 | 값 |
+| --- | --- |
+| `APPLE_TEAM_ID` | Apple Developer 팀 ID (developer.apple.com → Membership, 10자리) |
+| `ASC_KEY_ID` | App Store Connect → 사용자 및 액세스 → 통합 → App Store Connect API 키의 키 ID (**관리** 역할) |
+| `ASC_ISSUER_ID` | 같은 화면 위쪽의 Issuer ID |
+| `ASC_KEY_P8` | 내려받은 `AuthKey_XXXX.p8` 파일 내용 전체 |
+
+App Store Connect에 번들 ID `com.hikerpro.app`로 앱이 먼저 만들어져 있어야 합니다.
