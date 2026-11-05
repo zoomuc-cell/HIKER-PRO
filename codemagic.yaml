@@ -1,0 +1,80 @@
+# Codemagic: build the HIKER PRO iPhone app (React Native, ios/) and upload it to TestFlight.
+# Setup steps (Korean, step by step): ios/README.md › "Codemagic으로 TestFlight 올리기".
+#
+# Needs in Codemagic:
+#   - App Store Connect API key under Settings › Integrations › Developer Portal, named exactly: weekline-asc
+#     (the same Apple team key WEEKLINE uses; one key works for every app in the team)
+#   - Environment variable group "hikerpro_signing" with CERTIFICATE_PRIVATE_KEY (secret)
+#   - (optional) APP_STORE_APPLE_ID in the same group: the app's Apple ID number from App Store Connect
+workflows:
+  ios-testflight:
+    name: HIKER PRO iOS → TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 90
+    integrations:
+      app_store_connect: weekline-asc
+    environment:
+      groups:
+        - hikerpro_signing
+      vars:
+        BUNDLE_ID: com.hikerpro.app
+        XCODE_WORKSPACE: ios/HikerPro.xcworkspace
+        XCODE_PROJECT: ios/HikerPro.xcodeproj
+        XCODE_SCHEME: HikerPro
+      node: 22
+      xcode: latest # App Store Connect only accepts builds made with the iOS 26 SDK (Xcode 26) or later
+      cocoapods: default
+    triggering:
+      events:
+        - tag # push a tag such as ios-1.3.0 to build; or press "Start new build"
+      tag_patterns:
+        - pattern: 'ios-*'
+    scripts:
+      - name: Check the SDK is new enough for App Store Connect
+        script: |
+          xcodebuild -version
+          V=$(xcrun --sdk iphoneos --show-sdk-version | cut -d. -f1)
+          if [ "$V" -lt 26 ]; then echo "iOS SDK $V is too old: App Store Connect needs the iOS 26 SDK (Xcode 26)"; exit 1; fi
+      - name: Check the iPhone code is on this branch
+        script: |
+          if [ ! -d ios/HikerPro.xcodeproj ]; then
+            echo "ios/ folder is missing on this branch. Merge PR #1 (and #2) into main, or build the branch claude/project-thread-gw3dis."
+            exit 1
+          fi
+      - name: Install JS packages
+        script: npm ci --legacy-peer-deps
+      - name: Install CocoaPods
+        script: cd ios && pod install
+      - name: Signing certificate and App Store profile (created on Apple's side when missing)
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --certificate-key=@env:CERTIFICATE_PRIVATE_KEY \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: Build number (always higher than the last TestFlight build)
+        script: |
+          # Codemagic's own build counter, kept above the project value (9) and the GitHub Actions uploads (run number + 100)
+          N=$((BUILD_NUMBER + 1000))
+          if [ -n "$APP_STORE_APPLE_ID" ]; then
+            LAST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo 0)
+            case "$LAST" in ''|*[!0-9]*) LAST=0;; esac
+            if [ $((LAST + 1)) -gt "$N" ]; then N=$((LAST + 1)); fi
+          fi
+          echo "Build number $N"
+          sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]*;/CURRENT_PROJECT_VERSION = $N;/" "$XCODE_PROJECT/project.pbxproj"
+          grep -m1 "CURRENT_PROJECT_VERSION" "$XCODE_PROJECT/project.pbxproj"
+      - name: Build the .ipa
+        script: |
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true

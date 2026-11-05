@@ -16,6 +16,7 @@ import {
   openSubscriptionManagement,
   purchasePlan,
   restorePro,
+  retryStore,
   usePro,
   type StorePlan,
 } from '../services/ProService';
@@ -77,9 +78,7 @@ const ProUpgradeModal = ({visible, onClose, featureName}: Props) => {
       ? 'Pro 구독 중'
       : pro.source === 'pass' && pro.passExpiresAt
         ? `관광객 이용권 · ${formatDate(pro.passExpiresAt)}까지`
-        : pro.source === 'admin'
-          ? 'Pro 활성 (관리자 설정)'
-          : null;
+        : null;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -128,9 +127,14 @@ const ProUpgradeModal = ({visible, onClose, featureName}: Props) => {
                 </TouchableOpacity>
               ))
             ) : (
-              <Text style={styles.notice}>
-                현재 {store}에서 상품 정보를 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.
-              </Text>
+              <View>
+                <Text style={styles.notice}>
+                  현재 {store}에서 상품 정보를 불러올 수 없습니다. 인터넷 연결을 확인해 주세요.
+                </Text>
+                <TouchableOpacity style={styles.linkBtn} onPress={() => retryStore()} disabled={pro.busy}>
+                  <Text style={styles.linkText}>다시 시도</Text>
+                </TouchableOpacity>
+              </View>
             )}
 
             <View style={styles.row}>

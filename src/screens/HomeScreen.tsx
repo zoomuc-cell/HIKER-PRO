@@ -24,6 +24,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import LocationService from '../services/LocationService';
 import {cameraErrorMessage, hasIosLocationPermission, requestCameraPermission} from '../utils/permissions';
 import HomeShareSheet from '../components/HomeShareSheet';
+import {toStoredFileRef} from '../utils/appFiles';
 
 type ActivityType =
   | 'hiking'
@@ -281,7 +282,8 @@ const HomeScreen = ({navigation}: any) => {
 
       const photo: LibraryPhoto = {
         id,
-        uri: 'file://' + path,
+        // iOS 는 앱 업데이트 때 앱 폴더 경로가 바뀌므로 Documents 아래 상대 경로만 저장한다
+        uri: toStoredFileRef(path),
         timestamp: capturedAt,
         ...(location
           ? {
@@ -392,26 +394,49 @@ const HomeScreen = ({navigation}: any) => {
     }
   };
 
-  const showSosDialog = () => {
-    const loc = getSosLocation();
-    let pos = '수신 대기중';
-    if (loc) {
-      const ageMin = Math.floor((Date.now() - loc.timestamp) / 60000);
-      pos =
-        loc.latitude.toFixed(5) + ', ' + loc.longitude.toFixed(5) +
-        (ageMin >= 1 ? ' (약 ' + ageMin + '분 전 위치)' : '');
-    } else {
+  // SOS: 최근 위치가 없으면 최대 10초 동안 현재 위치를 받아 온 뒤 창을 띄운다
+  const [sosLocating, setSosLocating] = useState(false);
+  const sosLocatingRef = useRef(false);
+  const onSosPress = async () => {
+    if (sosLocatingRef.current) {
+      return;
+    }
+    let loc = getSosLocation();
+    if (!loc) {
+      sosLocatingRef.current = true;
+      setSosLocating(true);
+      try {
+        loc = toValidLocation(
+          await fetchFreshLocation(),
+          Date.now(),
+          SOS_LOCATION_MAX_AGE_MS,
+          SOS_LOCATION_MAX_ACCURACY_M,
+        );
+      } finally {
+        sosLocatingRef.current = false;
+        setSosLocating(false);
+      }
+    }
+    showSosDialog(loc);
+  };
+
+  const showSosDialog = (loc: ValidLocation | null) => {
+    if (!loc) {
       warmUpLocation();
     }
+    const ageMin = loc ? Math.floor((Date.now() - loc.timestamp) / 60000) : 0;
+    const pos = loc
+      ? loc.latitude.toFixed(5) + ', ' + loc.longitude.toFixed(5) +
+        (ageMin >= 1 ? ' (약 ' + ageMin + '분 전 위치)' : '')
+      : '위치 확인 불가';
+    // 문자에는 위치가 반드시 들어가고, 위치를 못 받았으면 그 사실과 전화 요청을 분명히 적는다
+    const smsBody = loc
+      ? '긴급 구조 요청! 위치: 위도 ' + loc.latitude.toFixed(6) + ', 경도 ' + loc.longitude.toFixed(6) +
+        (ageMin >= 1 ? ' (약 ' + ageMin + '분 전 위치)' : '') +
+        ' https://maps.google.com/?q=' + loc.latitude.toFixed(6) + ',' + loc.longitude.toFixed(6)
+      : '긴급 구조 요청! 위치 확인 불가 - 전화 요망';
 
-    const sms119 = () => {
-      if (loc) {
-        const msg = '긴급 구조 요청! 위치: 위도 ' + loc.latitude.toFixed(6) + ', 경도 ' + loc.longitude.toFixed(6);
-        openUrlSafe(smsUrl('119', msg), '문자 전송 실패');
-      } else {
-        Alert.alert('알림', '현재 위치를 아직 받지 못했습니다. 전화로 신고해 주세요.');
-      }
-    };
+    const sms119 = () => openUrlSafe(smsUrl('119', smsBody), '문자 전송 실패');
 
     if (contact) {
       const label = (contact.name ? contact.name + ' ' : '') + '(' + contact.phone + ')';
@@ -425,8 +450,7 @@ const HomeScreen = ({navigation}: any) => {
               {text: '전화', onPress: () => openUrlSafe('tel:' + phone, '전화 연결 실패')},
               {
                 text: '위치 문자',
-                onPress: () =>
-                  openUrlSafe(smsUrl(phone, '긴급 구조 요청! 위치: ' + pos), '문자 전송 실패'),
+                onPress: () => openUrlSafe(smsUrl(phone, smsBody), '문자 전송 실패'),
               },
               {text: '취소', style: 'cancel'},
             ]),
@@ -566,10 +590,14 @@ const HomeScreen = ({navigation}: any) => {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="SOS 긴급 구조 요청"
-          onPress={showSosDialog}
+          onPress={onSosPress}
           style={({pressed}) => [styles.sosButton, pressed && styles.sosButtonPressed]}>
-          <Icon name="alarm-light" size={30} color="#FFFFFF" />
-          <Text style={styles.sosText}>SOS 긴급 구조</Text>
+          {sosLocating ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Icon name="alarm-light" size={30} color="#FFFFFF" />
+          )}
+          <Text style={styles.sosText}>{sosLocating ? '위치 확인 중...' : 'SOS 긴급 구조'}</Text>
         </Pressable>
       </View>
     </View>

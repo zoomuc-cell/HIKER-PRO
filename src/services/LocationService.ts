@@ -16,6 +16,8 @@ class LocationService {
   private trackingActive = false;
   private iosWatches = new Set<IosWatch>();
   currentLocation: any = null;
+  // (GPS 고도 - 기압 고도) 차이. null 이면 아직 보정 전
+  private baroOffset: number | null = null;
   barometerSubscription: any = null;
   accelerometerSubscription: any = null;
 
@@ -84,43 +86,39 @@ class LocationService {
   }
 
   /**
-   * 칼만 필터 간소화 버전 - 고도 정확도 향상
+   * 1차 저역 필터. 예전 값(Q=0.01, R=2 → 계수 0.005)은 새 값을 0.5%만 반영해서
+   * 실제로 500m 를 올라도 고도가 거의 변하지 않았다. 지금은 새 값을 30% 반영한다.
    */
   kalmanFilter(measurement: number, previousEstimate: number | null): number {
-    if (!previousEstimate) return measurement;
-    const Q = 0.01;
-    const R = 2.0;
-    const K = 1 / (1 + R / Q);
-
+    if (previousEstimate === null || !Number.isFinite(previousEstimate)) {
+      return measurement;
+    }
+    const K = 0.3;
     return previousEstimate + K * (measurement - previousEstimate);
   }
 
   /**
-   * 센서 융합: GPS + 기압계 + 가속도계
+   * 센서 융합: GPS 고도 + 기압계
+   * 기압계 절대 고도는 날씨에 따라 수십~수백 m 틀리지만 고도 '변화'는 정확하다.
+   * 그래서 GPS 정확도가 좋을 때 (GPS 고도 - 기압 고도) 차이를 천천히 맞춰 두고,
+   * 고도는 '기압 고도 + 그 차이'로 계산한다. 기압계가 없으면 GPS 고도를 걸러서 쓴다.
    */
   fuseSensorData(gpsAltitude: number, accuracy: number): number {
     let fusedAltitude = gpsAltitude;
+    const hasGpsAltitude = Number.isFinite(gpsAltitude) && gpsAltitude !== 0;
 
-    // 1. 기압계 데이터가 있으면 통합
     if (this.sensorData.pressure) {
-      const baroAltitude = this.calculateAltitudeFromPressure(
-        this.sensorData.pressure
-      );
-
-      // GPS 정확도에 따라 가중치 조정
-      const gpsWeight = Math.min(1, 10 / (accuracy || 10));
-      const baroWeight = 1 - gpsWeight;
-
-      fusedAltitude = gpsAltitude * gpsWeight + baroAltitude * baroWeight;
+      const baroAltitude = this.calculateAltitudeFromPressure(this.sensorData.pressure);
+      if (hasGpsAltitude && accuracy <= 20) {
+        const diff = gpsAltitude - baroAltitude;
+        this.baroOffset = this.baroOffset === null ? diff : this.baroOffset + 0.05 * (diff - this.baroOffset);
+      }
+      fusedAltitude = this.baroOffset === null ? gpsAltitude : baroAltitude + this.baroOffset;
+    } else {
+      fusedAltitude = this.kalmanFilter(gpsAltitude, this.sensorData.previousAltitude);
     }
 
-    // 2. 칼만 필터 적용
-    fusedAltitude = this.kalmanFilter(
-      fusedAltitude,
-      this.sensorData.previousAltitude
-    );
-
-    // 3. 이동 평균 (최근 5개 데이터)
+    // 이동 평균 (최근 5개 데이터)
     this.sensorData.altitudeHistory.push(fusedAltitude);
     if (this.sensorData.altitudeHistory.length > 5) {
       this.sensorData.altitudeHistory.shift();
@@ -132,6 +130,13 @@ class LocationService {
 
     this.sensorData.previousAltitude = smoothedAltitude;
     return smoothedAltitude;
+  }
+
+  // 새 활동을 시작할 때 이전 활동(또는 지도 화면)의 고도 보정 상태를 지운다
+  resetAltitudeState() {
+    this.sensorData.previousAltitude = null;
+    this.sensorData.altitudeHistory = [];
+    this.baroOffset = null;
   }
 
   /**
@@ -411,6 +416,7 @@ class LocationService {
 
   async startTracking() {
     this.trackingActive = true;
+    this.resetAltitudeState();
     this.startBarometer();
     this.startAccelerometer();
 

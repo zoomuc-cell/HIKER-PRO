@@ -1,5 +1,5 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {View, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, Modal, PermissionsAndroid, Platform} from 'react-native';
+import {View, StyleSheet, ScrollView, TouchableOpacity, Alert, AppState, Image, Linking, Modal, PermissionsAndroid, Platform} from 'react-native';
 import type {ScrollViewInstance} from 'react-native';
 import MapView, {Marker, Polyline, PROVIDER_GOOGLE} from 'react-native-maps';
 import {launchCamera} from 'react-native-image-picker';
@@ -12,9 +12,25 @@ import {cameraErrorMessage, requestCameraPermission, requestLocationPermission} 
 import {exportActivityGpx} from '../utils/gpx';
 import {usePro} from '../services/ProService';
 import ProUpgradeModal from '../components/ProUpgradeModal';
+import {
+  clearDraft,
+  loadActivitySummaries,
+  loadDraft,
+  loadRoutePoints,
+  saveActivity,
+  saveDraft,
+  type TrackingDraft,
+} from '../services/ActivityStore';
+import {startTrackingNotification, stopTrackingNotification} from '../services/TrackingForeground';
+import {resolveAppFileUri, toStoredFileRef} from '../utils/appFiles';
 
-const HISTORY_KEY = 'hiker_activity_history';
 const VISITED_KEY = 'hiker_visited_regions';
+// 기록 중 임시 저장 주기 (앱이 꺼져도 이 간격 안의 기록만 잃는다)
+const DRAFT_SAVE_INTERVAL_MS = 60 * 1000;
+// 정확도가 이보다 나쁜 위치는 거리·고도 계산에서 뺀다
+const MAX_POINT_ACCURACY_M = 50;
+// 고도가 이만큼 이상 오른 경우에만 상승 고도로 센다 (GPS 고도의 잔떨림 제거)
+const ELEVATION_STEP_M = 3;
 
 type ActivityType =
   | 'hiking'
@@ -59,6 +75,7 @@ type ActivityRecord = {
   pointsCount: number;
   estimatedFloors?: number;
   routePoints?: TrackingPoint[];
+  hasRoute?: boolean;
   photos?: ActivityPhoto[];
 };
 
@@ -130,12 +147,13 @@ const TrackingScreen = ({route}: any) => {
       setGpxUpgradeVisible(true);
       return;
     }
-    if (!record.routePoints || record.routePoints.length < 2) {
+    const routePoints = record.routePoints || (await loadRoutePoints(record));
+    if (routePoints.length < 2) {
       Alert.alert('GPX 내보내기', '이 활동에는 내보낼 경로가 없습니다.');
       return;
     }
     try {
-      await exportActivityGpx(record);
+      await exportActivityGpx({...record, routePoints});
     } catch (error: any) {
       Alert.alert('GPX 내보내기', error?.message || 'GPX 파일을 만들지 못했습니다.');
     }
@@ -149,6 +167,10 @@ const TrackingScreen = ({route}: any) => {
   const lastLocationRef = useRef<{latitude: number; longitude: number; timestamp: number; accuracy: number} | null>(null);
   const distanceRef = useRef(0);
   const elevationRef = useRef(0);
+  // 상승 고도 계산 기준 고도 (ELEVATION_STEP_M 이상 오르면 그만큼 더하고 기준을 올린다)
+  const elevationAnchorRef = useRef<number | null>(null);
+  const draftTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isTrackingRef = useRef(false);
   const startTimeRef = useRef<number | null>(null);
   const activityRef = useRef<ActivityType>('hiking');
   const activityWeightKgRef = useRef(70);
@@ -172,13 +194,24 @@ const TrackingScreen = ({route}: any) => {
 
   useEffect(() => {
     loadHistory();
+    offerDraftRecovery();
+
+    // 백그라운드로 갈 때 바로 임시 저장 (iOS·Android 가 앱을 종료해도 그때까지의 기록은 남는다)
+    const appStateSub = AppState.addEventListener('change', state => {
+      if (state !== 'active' && isTrackingRef.current) {
+        persistDraft();
+      }
+    });
 
     return () => {
+      appStateSub.remove();
+      stopDraftTimer();
       if (watchRef.current) {
         watchRef.current.remove();
         watchRef.current = null;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -225,18 +258,17 @@ const TrackingScreen = ({route}: any) => {
 
   const loadHistory = async () => {
     try {
-      const raw = await AsyncStorage.getItem(HISTORY_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(parsed)) {
-        parsed.sort((a, b) => b.endedAt - a.endedAt);
-        setHistory(parsed);
-      } else {
-        setHistory([]);
-      }
+      setHistory(await loadActivitySummaries());
     } catch (error) {
       console.error('Failed to load activity history:', error);
       setHistory([]);
     }
+  };
+
+  const openRecord = async (item: ActivityRecord) => {
+    setSelectedPhoto(null);
+    const routePoints = await loadRoutePoints(item);
+    setSelectedRecord({...item, routePoints});
   };
 
   const toRadians = (value: number) => (value * Math.PI) / 180;
@@ -348,19 +380,35 @@ const TrackingScreen = ({route}: any) => {
       return;
     }
 
+    // 정확도가 나쁜 위치(실내, 계곡 등)는 경로가 지그재그로 튀어 거리·고도가 부풀려지므로 버린다
+    const accuracy = Number(location.accuracy);
+    if (Number.isFinite(accuracy) && accuracy > MAX_POINT_ACCURACY_M) {
+      return;
+    }
+
     const prev = pointsRef.current[pointsRef.current.length - 1];
 
     if (prev) {
       const segment = getDistanceMeters(prev, point);
-      if (segment > 0.5 && segment < 250) {
+      const seconds = Math.max(1, (point.timestamp - prev.timestamp) / 1000);
+      // 위치가 잠시 끊겼다 이어진 경우도 거리에 넣되, 걷기·자전거로 불가능한 순간이동(초속 30m 초과)은 뺀다
+      if (segment > 0.5 && segment / seconds < 30) {
         distanceRef.current += segment;
         setDistance(distanceRef.current);
       }
+    }
 
-      const climb = Math.max(0, point.altitude - prev.altitude);
-      if (climb > 0 && climb < 120) {
-        elevationRef.current += climb;
+    // 상승 고도: 기준 고도보다 ELEVATION_STEP_M 이상 올랐을 때만 더한다. 내려가면 기준을 낮춘다.
+    {
+      const anchor = elevationAnchorRef.current;
+      if (anchor === null) {
+        elevationAnchorRef.current = point.altitude;
+      } else if (point.altitude - anchor >= ELEVATION_STEP_M) {
+        elevationRef.current += point.altitude - anchor;
+        elevationAnchorRef.current = point.altitude;
         setElevation(elevationRef.current);
+      } else if (anchor - point.altitude >= ELEVATION_STEP_M) {
+        elevationAnchorRef.current = point.altitude;
       }
     }
 
@@ -428,6 +476,7 @@ const TrackingScreen = ({route}: any) => {
       });
       const path = directory + '/photo_' + capturedAt + '_' + Math.floor(Math.random() * 1000000) + '.jpg';
       await ReactNativeBlobUtil.fs.writeFile(path, asset.base64, 'base64');
+      // iOS 는 앱 업데이트 때 앱 폴더 경로가 바뀌므로 Documents 아래 상대 경로만 저장한다
       const location = lastLocationRef.current;
       const validLocation = location &&
         capturedAt - location.timestamp <= 30000 &&
@@ -435,12 +484,13 @@ const TrackingScreen = ({route}: any) => {
         Number.isFinite(location.latitude) && Number.isFinite(location.longitude);
       const photo: ActivityPhoto = {
         id: 'photo_' + capturedAt,
-        uri: 'file://' + path,
+        uri: toStoredFileRef(path),
         timestamp: capturedAt,
         ...(validLocation ? {latitude: location!.latitude, longitude: location!.longitude} : {}),
       };
       photosRef.current = [...photosRef.current, photo];
       setPhotos([...photosRef.current]);
+      persistDraft();
     } catch (error) {
       console.error('Activity photo error:', error);
       Alert.alert('사진 저장 실패', '사진을 저장하지 못했습니다. 다시 시도해 주세요.');
@@ -450,35 +500,130 @@ const TrackingScreen = ({route}: any) => {
     }
   };
 
-  const startTracking = async (activityType?: ActivityType) => {
-  try {
-    const permissionGranted = await requestLocationPermission();
+  // ---- 기록 중 임시 저장 / 복구 ----
 
-    if (!permissionGranted) {
+  const persistDraft = async () => {
+    const startedAt = startTimeRef.current;
+    if (!isTrackingRef.current || !startedAt) {
       return;
     }
+    try {
+      await saveDraft({
+        activityType: activityRef.current,
+        startedAt,
+        distanceM: distanceRef.current,
+        elevationM: elevationRef.current,
+        weightKg: activityWeightKgRef.current,
+        points: pointsRef.current,
+        photos: photosRef.current,
+      });
+    } catch (error) {
+      console.warn('Failed to save tracking draft:', error);
+    }
+  };
+
+  const startDraftTimer = () => {
+    stopDraftTimer();
+    draftTimerRef.current = setInterval(persistDraft, DRAFT_SAVE_INTERVAL_MS);
+  };
+
+  const stopDraftTimer = () => {
+    if (draftTimerRef.current) {
+      clearInterval(draftTimerRef.current);
+      draftTimerRef.current = null;
+    }
+  };
+
+  // 지난번에 기록 중 앱이 꺼졌으면 이어서 기록하거나 저장할지 묻는다
+  const offerDraftRecovery = async () => {
+    const draft = await loadDraft();
+    if (!draft || isTrackingRef.current) {
+      return;
+    }
+    const type = (ACTIVITY_META as any)[draft.activityType] ? (draft.activityType as ActivityType) : 'hiking';
+    const started = new Date(draft.startedAt);
+    const km = (draft.distanceM / 1000).toFixed(2);
+    Alert.alert(
+      '기록 중이던 활동이 있습니다',
+      `${started.getMonth() + 1}월 ${started.getDate()}일 ${started.getHours()}시 ${String(started.getMinutes()).padStart(2, '0')}분에 시작한 ${ACTIVITY_META[type].label} 기록(${km}km)이 저장되지 않은 채 앱이 종료되었습니다.`,
+      [
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: () =>
+            Alert.alert('기록 삭제', '이 기록을 지울까요? 되돌릴 수 없습니다.', [
+              {text: '취소', style: 'cancel', onPress: () => offerDraftRecovery()},
+              {text: '삭제', style: 'destructive', onPress: () => clearDraft()},
+            ]),
+        },
+        {text: '지금까지 저장', onPress: () => saveDraftAsActivity(draft, type)},
+        {text: '이어서 기록', onPress: () => startTracking(type, draft)},
+      ],
+      {cancelable: false},
+    );
+  };
+
+  const saveDraftAsActivity = async (draft: TrackingDraft, type: ActivityType) => {
+    const ok = await finalizeActivity({
+      activityType: type,
+      startedAt: draft.startedAt,
+      endedAt: Math.max(draft.savedAt, draft.startedAt),
+      distanceM: draft.distanceM,
+      elevationM: draft.elevationM,
+      weightKg: draft.weightKg,
+      points: draft.points as TrackingPoint[],
+      photos: draft.photos as ActivityPhoto[],
+    });
+    if (ok) {
+      Alert.alert('저장 완료', '앱이 종료되기 전까지의 기록을 저장했습니다.');
+    }
+  };
+
+  const showLocationSettingsAlert = () => {
+    Alert.alert(
+      '위치 권한이 필요합니다',
+      Platform.OS === 'ios'
+        ? '활동 경로를 기록하려면 설정 > Hiker Pro > 위치에서 "앱을 사용하는 동안"을 선택해 주세요.'
+        : '활동 경로를 기록하려면 설정 > 앱 > Hiker Pro > 권한 > 위치에서 "앱 사용 중에만 허용"과 "정확한 위치"를 켜 주세요.',
+      [
+        {text: '취소', style: 'cancel'},
+        {text: '설정 열기', onPress: () => Linking.openSettings().catch(() => {})},
+      ],
+    );
+  };
+
+  const startTracking = async (activityType?: ActivityType, resumeDraft?: TrackingDraft) => {
+    try {
+      const permissionGranted = await requestLocationPermission();
+
+      if (!permissionGranted) {
+        showLocationSettingsAlert();
+        return;
+      }
 
       const nextActivity = activityType || selectedActivity;
-      
+
       setSelectedActivity(nextActivity);
       activityRef.current = nextActivity;
 
-      let activityWeightKg = 70;
-      try {
-        const savedUser = await AsyncStorage.getItem('hiker_user');
-        if (savedUser) {
-          const parsedUser = JSON.parse(savedUser);
-          const savedWeight = Number(parsedUser?.weightKg);
-          if (
-            Number.isFinite(savedWeight) &&
-            savedWeight >= 25 &&
-            savedWeight <= 300
-          ) {
-            activityWeightKg = savedWeight;
+      let activityWeightKg = resumeDraft?.weightKg || 70;
+      if (!resumeDraft) {
+        try {
+          const savedUser = await AsyncStorage.getItem('hiker_user');
+          if (savedUser) {
+            const parsedUser = JSON.parse(savedUser);
+            const savedWeight = Number(parsedUser?.weightKg);
+            if (
+              Number.isFinite(savedWeight) &&
+              savedWeight >= 25 &&
+              savedWeight <= 300
+            ) {
+              activityWeightKg = savedWeight;
+            }
           }
+        } catch (error) {
+          console.warn('Failed to load profile weight for activity:', error);
         }
-      } catch (error) {
-        console.warn('Failed to load profile weight for activity:', error);
       }
       activityWeightKgRef.current = activityWeightKg;
 
@@ -488,21 +633,30 @@ const TrackingScreen = ({route}: any) => {
       }
 
       const now = Date.now();
+      const startedAt = resumeDraft ? resumeDraft.startedAt : now;
+      const resumedPoints = (resumeDraft?.points || []) as TrackingPoint[];
 
-      pointsRef.current = [];
-      photosRef.current = [];
+      pointsRef.current = [...resumedPoints];
+      photosRef.current = [...((resumeDraft?.photos || []) as ActivityPhoto[])];
       lastLocationRef.current = null;
-      setPhotos([]);
-      distanceRef.current = 0;
-      elevationRef.current = 0;
-      startTimeRef.current = now;
+      setPhotos([...photosRef.current]);
+      distanceRef.current = resumeDraft?.distanceM || 0;
+      elevationRef.current = resumeDraft?.elevationM || 0;
+      elevationAnchorRef.current = resumedPoints.length
+        ? resumedPoints[resumedPoints.length - 1].altitude
+        : null;
+      startTimeRef.current = startedAt;
+      isTrackingRef.current = true;
 
       setIsTracking(true);
-      setStartTime(now);
-      setDistance(0);
-      setDuration(0);
-      setElevation(0);
+      setStartTime(startedAt);
+      setDistance(distanceRef.current);
+      setDuration(Math.floor((now - startedAt) / 1000));
+      setElevation(elevationRef.current);
       setCalories(0);
+
+      // Android: 상단 '활동 기록 중' 알림과 함께 포그라운드 서비스를 켜서 화면이 꺼져도 위치를 계속 받는다
+      startTrackingNotification(ACTIVITY_META[nextActivity].label);
 
       try {
         await LocationService.startTracking();
@@ -523,23 +677,128 @@ const TrackingScreen = ({route}: any) => {
       watchRef.current = LocationService.watchPosition((location: any) => {
         pushLocation(location);
       });
+
+      await persistDraft();
+      startDraftTimer();
     } catch (error) {
       console.error('Failed to start tracking:', error);
+      isTrackingRef.current = false;
+      stopDraftTimer();
+      stopTrackingNotification();
       setIsTracking(false);
       setStartTime(null);
       startTimeRef.current = null;
     }
   };
 
-   const stopTracking = async () => {
+  type FinalizeInput = {
+    activityType: ActivityType;
+    startedAt: number;
+    endedAt: number;
+    distanceM: number;
+    elevationM: number;
+    weightKg: number;
+    points: TrackingPoint[];
+    photos: ActivityPhoto[];
+  };
+
+  // 활동을 기록 목록에 저장한다. 성공하면 임시 저장본을 지우고 true.
+  // 실패하면 임시 저장본을 남겨 두고(다음에 앱을 열면 다시 저장할 수 있음) 알림창을 띄운다.
+  const finalizeActivity = async (input: FinalizeInput): Promise<boolean> => {
+    const {activityType: finalActivity, startedAt, endedAt, points} = input;
+    const finalDuration = Math.max(0, Math.floor((endedAt - startedAt) / 1000));
+    const firstPoint = points[0];
+    const lastPoint = points[points.length - 1] || firstPoint;
+
+    const visitedRegionKeys = Array.from(
+      new Set(points.map(point => makeRegionKey(point))),
+    );
+
+    const record: ActivityRecord = {
+      id: `activity_${endedAt}`,
+      activityType: finalActivity,
+      activityLabel: ACTIVITY_META[finalActivity].label,
+      startedAt,
+      endedAt,
+      durationSec: finalDuration,
+      distanceM: Math.round(input.distanceM),
+      elevationM: Math.round(input.elevationM),
+      calories: estimateCalories(
+        input.distanceM,
+        input.elevationM,
+        finalDuration,
+        finalActivity,
+        input.weightKg,
+      ),
+      weightKgUsed: input.weightKg,
+      calorieMethodVersion: 'CALORIE_MET_V1',
+      locationLabel: makeLocationLabel(firstPoint),
+      startLatitude: firstPoint?.latitude || 0,
+      startLongitude: firstPoint?.longitude || 0,
+      endLatitude: lastPoint?.latitude || 0,
+      endLongitude: lastPoint?.longitude || 0,
+      visitedRegionKeys,
+      pointsCount: points.length,
+      estimatedFloors:
+        finalActivity === 'building'
+          ? estimateFloors(Math.round(input.elevationM))
+          : undefined,
+      routePoints: points,
+      photos: input.photos,
+    };
+
+    try {
+      setHistory(await saveActivity(record));
+    } catch (error) {
+      console.error('Failed to save activity result:', error);
+      try {
+        await saveDraft({
+          activityType: finalActivity,
+          startedAt,
+          distanceM: input.distanceM,
+          elevationM: input.elevationM,
+          weightKg: input.weightKg,
+          points,
+          photos: input.photos,
+        });
+      } catch (e) {}
+      Alert.alert(
+        '기록 저장 실패',
+        '활동 기록을 저장하지 못했습니다. 기록은 임시로 보관했으니, 앱을 다시 열면 저장을 다시 시도할 수 있습니다.\n기기 저장 공간이 부족한지 확인해 주세요.',
+      );
+      return false;
+    }
+
+    await clearDraft();
+
+    // 방문 지역은 부가 정보라 실패해도 기록 저장에는 영향을 주지 않는다
+    try {
+      const rawVisited = await AsyncStorage.getItem(VISITED_KEY);
+      const existingVisited = rawVisited ? JSON.parse(rawVisited) : [];
+      const nextVisited = Array.from(
+        new Set([
+          ...(Array.isArray(existingVisited) ? existingVisited : []),
+          ...visitedRegionKeys,
+        ]),
+      );
+      await AsyncStorage.setItem(VISITED_KEY, JSON.stringify(nextVisited));
+    } catch (error) {
+      console.warn('Failed to save visited regions:', error);
+    }
+    return true;
+  };
+
+  const stopTracking = async () => {
     if (cameraBusyRef.current) {
       Alert.alert('사진 저장 중', '사진 저장이 끝난 뒤 활동을 종료해 주세요.');
       return;
     }
     const startedAt = startTimeRef.current;
     const endedAt = Date.now();
-    const finalActivity = activityRef.current;
 
+    isTrackingRef.current = false;
+    stopDraftTimer();
+    stopTrackingNotification();
     try {
       if (watchRef.current) {
         watchRef.current.remove();
@@ -558,78 +817,18 @@ const TrackingScreen = ({route}: any) => {
       return;
     }
 
-    const finalDuration = Math.max(
-      duration,
-      Math.floor((endedAt - startedAt) / 1000),
-    );
-    setDuration(finalDuration);
+    setDuration(Math.floor((endedAt - startedAt) / 1000));
 
-    const points = [...pointsRef.current];
-    const firstPoint = points[0];
-    const lastPoint = points[points.length - 1] || firstPoint;
-
-    const visitedRegionKeys = Array.from(
-      new Set(points.map(point => makeRegionKey(point))),
-    );
-
-    const finalCalories = estimateCalories(
-      distanceRef.current,
-      elevationRef.current,
-      finalDuration,
-      finalActivity,
-      activityWeightKgRef.current,
-    );
-
-    const record: ActivityRecord = {
-      id: `activity_${endedAt}`,
-      activityType: finalActivity,
-      activityLabel: ACTIVITY_META[finalActivity].label,
+    await finalizeActivity({
+      activityType: activityRef.current,
       startedAt,
       endedAt,
-      durationSec: finalDuration,
-      distanceM: Math.round(distanceRef.current),
-      elevationM: Math.round(elevationRef.current),
-      calories: finalCalories,
-      weightKgUsed: activityWeightKgRef.current,
-      calorieMethodVersion: 'CALORIE_MET_V1',
-      locationLabel: makeLocationLabel(firstPoint),
-      startLatitude: firstPoint?.latitude || 0,
-      startLongitude: firstPoint?.longitude || 0,
-      endLatitude: lastPoint?.latitude || 0,
-      endLongitude: lastPoint?.longitude || 0,
-      visitedRegionKeys,
-      pointsCount: points.length,
-       estimatedFloors:
-         finalActivity === 'building'
-           ? estimateFloors(Math.round(elevationRef.current))
-           : undefined,
-       routePoints: points,
-       photos: [...photosRef.current],
-    };
-
-    try {
-      const rawHistory = await AsyncStorage.getItem(HISTORY_KEY);
-      const existingHistory = rawHistory ? JSON.parse(rawHistory) : [];
-      const nextHistory = Array.isArray(existingHistory)
-        ? [record, ...existingHistory].sort((a, b) => b.endedAt - a.endedAt)
-        : [record];
-
-      await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
-      setHistory(nextHistory);
-
-      const rawVisited = await AsyncStorage.getItem(VISITED_KEY);
-      const existingVisited = rawVisited ? JSON.parse(rawVisited) : [];
-      const nextVisited = Array.from(
-        new Set([
-          ...(Array.isArray(existingVisited) ? existingVisited : []),
-          ...visitedRegionKeys,
-        ]),
-      );
-
-      await AsyncStorage.setItem(VISITED_KEY, JSON.stringify(nextVisited));
-    } catch (error) {
-      console.error('Failed to save activity result:', error);
-    }
+      distanceM: distanceRef.current,
+      elevationM: elevationRef.current,
+      weightKg: activityWeightKgRef.current,
+      points: [...pointsRef.current],
+      photos: [...photosRef.current],
+    });
 
     setStartTime(null);
     startTimeRef.current = null;
@@ -933,8 +1132,8 @@ const TrackingScreen = ({route}: any) => {
                     )}
                    </View>
                  </View>
-                 {(item.routePoints?.length || item.photos?.length) ? (
-                   <Button icon="map-marker-path" onPress={() => {setSelectedRecord(item); setSelectedPhoto(null);}}>
+                 {(item.hasRoute || item.routePoints?.length || item.photos?.length) ? (
+                   <Button icon="map-marker-path" onPress={() => openRecord(item)}>
                      경로·사진 보기 {item.photos?.length ? `(${item.photos.length}장)` : ''}
                    </Button>
                  ) : null}
@@ -1027,14 +1226,14 @@ const TrackingScreen = ({route}: any) => {
           )}
           {selectedPhoto && (
             <View style={styles.selectedPhotoBox}>
-              <Image source={{uri: selectedPhoto.uri}} style={styles.selectedPhotoImage} resizeMode="contain" />
+              <Image source={{uri: resolveAppFileUri(selectedPhoto.uri)}} style={styles.selectedPhotoImage} resizeMode="contain" />
               <Text>{new Date(selectedPhoto.timestamp).toLocaleString()}</Text>
             </View>
           )}
           <ScrollView horizontal style={styles.photoStrip} contentContainerStyle={styles.photoStripContent}>
             {selectedRecord?.photos?.map(photo => (
               <TouchableOpacity key={photo.id} onPress={() => setSelectedPhoto(photo)}>
-                <Image source={{uri: photo.uri}} style={styles.photoThumbnail} />
+                <Image source={{uri: resolveAppFileUri(photo.uri)}} style={styles.photoThumbnail} />
                 <Text style={styles.photoTime}>{new Date(photo.timestamp).toLocaleTimeString()}</Text>
               </TouchableOpacity>
             ))}

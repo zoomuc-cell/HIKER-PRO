@@ -1,5 +1,8 @@
 ﻿import {Alert, Linking, PermissionsAndroid, Platform} from 'react-native';
 import {check, request, PERMISSIONS, RESULTS} from 'react-native-permissions';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const BACKGROUND_ASKED_KEY = 'hiker_bg_location_asked';
 
 const showIosSettingsAlert = (title: string, message: string) => {
   Alert.alert(title, message, [
@@ -51,7 +54,7 @@ const requestIosCameraPermission = async (): Promise<boolean> => {
     if (status === RESULTS.BLOCKED) {
       showIosSettingsAlert(
         '카메라 권한 필요',
-        '사진 촬영과 QR 코드 스캔을 하려면 설정 > HIKERPRO에서 카메라 접근을 허용해 주세요.',
+        '사진을 촬영하려면 설정 > Hiker Pro에서 카메라 접근을 허용해 주세요.',
       );
     }
     return false;
@@ -93,31 +96,47 @@ export const requestLocationPermission = async (): Promise<boolean> => {
   }
 
   try {
+    const fineAlready = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+    );
+    const needsBackgroundAsk =
+      Platform.Version >= 29 &&
+      !(await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION)) &&
+      (await AsyncStorage.getItem(BACKGROUND_ASKED_KEY).catch(() => null)) !== '1';
+
+    if (fineAlready && !needsBackgroundAsk) {
+      return true;
+    }
+
     // Android 시스템 권한 요청 전에 HIKERPRO 자체 고지를 먼저 표시한다.
     const disclosureAccepted = await showBackgroundLocationDisclosure();
 
     if (!disclosureAccepted) {
-      return false;
+      return fineAlready;
     }
 
-    const fineLocation = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-      {
-        title: 'HIKERPRO 위치 권한',
-        message:
-          '활동 중 이동 경로와 거리를 기록하려면 위치 권한이 필요합니다.',
-        buttonPositive: '허용',
-        buttonNegative: '취소',
-      },
-    );
+    if (!fineAlready) {
+      const fineLocation = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        {
+          title: 'HIKERPRO 위치 권한',
+          message:
+            '활동 중 이동 경로와 거리를 기록하려면 위치 권한이 필요합니다.',
+          buttonPositive: '허용',
+          buttonNegative: '취소',
+        },
+      );
 
-    if (fineLocation !== PermissionsAndroid.RESULTS.GRANTED) {
-      return false;
+      if (fineLocation !== PermissionsAndroid.RESULTS.GRANTED) {
+        return false;
+      }
     }
 
-    // Android 10 이상에서는 사용자가 시작한 활동 기록을
-    // 백그라운드에서도 계속하기 위해 백그라운드 위치 권한을 요청한다.
-    if (Platform.Version >= 29) {
+    // Android 10 이상: '항상 허용'은 한 번만 권한다. 고르지 않아도 기록은 시작한다.
+    // 기록 중에는 포그라운드 서비스('활동 기록 중' 알림)가 켜져 있어 '앱 사용 중에만 허용' 권한으로도
+    // 화면이 꺼진 동안 위치를 계속 받을 수 있다.
+    if (needsBackgroundAsk) {
+      await AsyncStorage.setItem(BACKGROUND_ASKED_KEY, '1').catch(() => {});
       const backgroundLocation = await PermissionsAndroid.request(
         PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
         {
@@ -128,9 +147,8 @@ export const requestLocationPermission = async (): Promise<boolean> => {
           buttonNegative: '취소',
         },
       );
-
       if (backgroundLocation !== PermissionsAndroid.RESULTS.GRANTED) {
-        return false;
+        console.log('Background location not granted; tracking continues with foreground service');
       }
     }
 

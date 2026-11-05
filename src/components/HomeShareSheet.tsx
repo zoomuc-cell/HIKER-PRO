@@ -14,6 +14,8 @@ import MapView from 'react-native-maps';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ReactNativeBlobUtil from 'react-native-blob-util';
+import {loadRoutePoints} from '../services/ActivityStore';
+import {resolveAppFileUri} from '../utils/appFiles';
 import RouteMapPreview, {
   MIN_ROUTE_POINTS,
   RoutePoint,
@@ -178,9 +180,11 @@ const existingPhotos = async (photos: unknown): Promise<{list: SharePhoto[]; mis
   if (!Array.isArray(photos)) {
     return {list: [], missing: 0};
   }
-  const candidates = photos.filter(
-    p => p && typeof p.uri === 'string' && p.uri.startsWith('file://'),
-  );
+  // 저장된 경로(상대 경로 또는 예전 전체 경로)를 현재 앱 폴더 기준 file:// URI 로 바꾼 뒤 확인
+  const candidates = photos
+    .filter(p => p && typeof p.uri === 'string' && p.uri.length > 0)
+    .map(p => ({...p, uri: resolveAppFileUri(p.uri)}))
+    .filter(p => p.uri.startsWith('file://'));
   const checks = await Promise.all(candidates.map(p => fileExists(p.uri)));
   const list: SharePhoto[] = [];
   candidates.forEach((p, i) => {
@@ -327,7 +331,11 @@ const HomeShareSheet = ({visible, onClose}: Props) => {
             dateText: dateMs !== null ? formatDateTime(dateMs) : '날짜 정보 없음',
             distanceText: isFiniteNumber(r.distanceM) ? (r.distanceM / 1000).toFixed(2) + ' km' : '',
             photoCount: Array.isArray(r.photos) ? r.photos.length : 0,
-            routeCount: getValidRoutePoints(r.routePoints).length,
+            routeCount: Array.isArray(r.routePoints)
+              ? getValidRoutePoints(r.routePoints).length
+              : r.hasRoute
+                ? Number(r.pointsCount) || 0
+                : 0,
           };
         });
       if (items.length === 0) {
@@ -353,7 +361,8 @@ const HomeShareSheet = ({visible, onClose}: Props) => {
     runBusy(async () => {
       setSelected(item);
       if (mode === 'route') {
-        const points = getValidRoutePoints(item.raw.routePoints);
+        // 경로는 활동마다 따로 저장되어 있다 (ActivityStore)
+        const points = getValidRoutePoints(await loadRoutePoints(item.raw));
         if (points.length < MIN_ROUTE_POINTS) {
           confirmTextOnly(item, '이동경로 없음', '이 활동에는 지도 이미지를 만들 만큼의 이동경로가 없습니다.');
           return;

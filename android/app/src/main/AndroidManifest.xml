@@ -21,7 +21,12 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
-    <!-- Camera & QR scan -->
+    <!-- 활동 기록 중 포그라운드 서비스 (상단 '활동 기록 중' 알림) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Camera (activity / profile photos) -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
@@ -82,9 +87,12 @@
             android:name="com.google.android.gms.version"
             android:value="@integer/google_play_services_version" />
 
-        <!-- Background Geolocation Service -->
-        <service android:name="com.transistorsoft.locationmanager.service.LocationService"
+        <!-- 활동 기록 중에만 켜지는 위치 포그라운드 서비스 (TrackingForegroundService.kt).
+             쓰지 않는 react-native-background-geolocation 서비스 선언은 지웠다. -->
+        <service
+            android:name=".TrackingForegroundService"
             android:enabled="true"
+            android:exported="false"
             android:foregroundServiceType="location" />
     </application>
 

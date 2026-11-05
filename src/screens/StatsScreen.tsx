@@ -2,12 +2,11 @@
 import React, {useCallback, useMemo, useState} from 'react';
 import {ScrollView, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import {loadActivitySummariesSafe} from '../services/ActivityStore';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import ProUpgradeModal from '../components/ProUpgradeModal';
 import {usePro} from '../services/ProService';
 
-const HISTORY_KEY = 'hiker_activity_history';
 
 type Activity = {
   id: string;
@@ -45,9 +44,8 @@ const formatDate = (time: number) => {
 
 const loadActivities = async (): Promise<Activity[]> => {
   try {
-    const raw = await AsyncStorage.getItem(HISTORY_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return (Array.isArray(parsed) ? parsed : [])
+    const parsed = await loadActivitySummariesSafe();
+    return parsed
       .filter((item: any) => item && typeof item.startedAt === 'number')
       .map((item: any) => ({
         id: String(item.id),
