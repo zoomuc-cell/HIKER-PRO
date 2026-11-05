@@ -78,3 +78,39 @@ GitHub → **Actions → iOS build → Run workflow** 에서 **testflight**를 �
 | `ASC_KEY_P8` | 내려받은 `AuthKey_XXXX.p8` 파일 내용 전체 |
 
 App Store Connect에 번들 ID `com.hikerpro.app`로 앱이 먼저 만들어져 있어야 합니다.
+
+## Codemagic으로 TestFlight 올리기 (맥 없이, 클릭으로)
+
+저장소 루트의 `codemagic.yaml` 이 설정 파일입니다 (워크플로 이름 **HIKER PRO iOS → TestFlight**).
+위의 GitHub Actions 방법과 둘 중 **한 가지만** 쓰세요. 빌드 번호를 따로 세기 때문에 Codemagic으로 올린 뒤
+GitHub Actions로 올리면 번호가 더 작아 거절될 수 있습니다.
+
+> 아이폰 코드(`ios/` 폴더)는 아직 main에 없습니다 (PR #1·#2 병합 전). 병합 전에는 Codemagic에서 브랜치를
+> `claude/project-thread-gw3dis` 로 골라야 하고, main으로 빌드하면 "ios/ folder is missing" 오류가 납니다.
+
+**준비 (한 번만)** — WEEKLINE에서 이미 한 단계는 건너뛰어도 됩니다.
+
+1. **번들 ID 등록**: developer.apple.com › Certificates, Identifiers & Profiles › Identifiers › **+** › App IDs › App ›
+   설명 `Hiker Pro`, Bundle ID(Explicit) `com.hikerpro.app` › **In-App Purchase** 체크 확인 › 등록.
+2. **App Store Connect에 앱 만들기**: 앱 › **+** › 신규 앱 › 플랫폼 iOS, 이름 Hiker Pro(이미 쓰는 이름이면 HIKER PRO 등산 기록 처럼),
+   기본 언어 한국어, 번들 ID `com.hikerpro.app`, SKU `hikerpro`. 만든 뒤 **앱 정보**의 **Apple ID**(숫자)를 적어 둡니다.
+3. **API 키**: WEEKLINE 때 Codemagic에 `weekline-asc` 이름으로 넣은 키를 그대로 씁니다 (같은 Apple 팀이면 모든 앱에 쓸 수 있음).
+   아직 없다면 App Store Connect › 사용자 및 액세스 › **통합** › App Store Connect API › **팀 키** › **+** (액세스 **관리자**)로 만들고,
+   Codemagic 왼쪽 **Settings › Integrations › Developer Portal › Connect** 에서 이름 **`weekline-asc`**, Issuer ID, Key ID, `.p8` 파일을 넣습니다.
+4. **Codemagic 환경 변수**: Applications › HIKER-PRO › **Environment variables**
+   - Variable name `CERTIFICATE_PRIVATE_KEY`, Value는 WEEKLINE 때 만든 `weekline_cert_key` 파일 내용 전체(같은 키를 쓰면 배포 인증서를 하나로 같이 씀),
+     Group `hikerpro_signing`, **Secret** 체크 › Add
+     - 키 파일이 없다면 윈도우 PowerShell 에서 `ssh-keygen -t rsa -b 2048 -m PEM -f hikerpro_cert_key -q -N '""'` 로 만들고 그 내용을 넣습니다.
+   - (권장) Variable name `APP_STORE_APPLE_ID`, Value는 2번의 Apple ID 숫자, Group `hikerpro_signing` › Add
+
+**빌드할 때마다**
+
+5. HIKER-PRO 화면 위의 **Branch** 를 고르고(병합 전: `claude/project-thread-gw3dis`, 병합 후: `main`) 오른쪽 위 **Check for configuration files** 를 누릅니다.
+   `codemagic.yaml` 내용이 보이면 **Start new build** › 같은 브랜치, 워크플로 **HIKER PRO iOS → TestFlight** › Start.
+   GitHub에서 `ios-1.3.0` 처럼 `ios-` 로 시작하는 태그를 만들어도 자동으로 시작합니다.
+6. 30~40분 뒤 빌드가 초록색이 되면 App Store Connect › TestFlight 에 새 빌드가 나타납니다 (Apple 처리에 10~30분 더 걸림).
+   수출 규정(암호화) 질문은 Info.plist 에 미리 답해 두어서 따로 묻지 않습니다.
+
+- 인증서와 배포용 프로비저닝 프로파일은 첫 빌드 때 Codemagic이 Apple 쪽에 자동으로 만들고, 다음부터는 같은 것을 씁니다.
+- 빌드 번호는 매번 자동으로 올라갑니다. 버전(1.3.0)은 Xcode 프로젝트의 `MARKETING_VERSION` 입니다.
+- 실패하면 빌드 화면에서 빨간 단계의 로그를 그대로 보내 주세요.

@@ -111,6 +111,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Use Xcode 26 (App Store Connect only accepts builds made with the iOS 26 SDK or later)
+        run: |
+          X=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$X" ]; then echo "::error::Xcode 26 is not installed on this runner"; ls -d /Applications/Xcode*.app; exit 1; fi
+          sudo xcode-select -s "$X"
+          xcodebuild -version
+
       - name: Check the App Store secrets are set
         run: |
           for v in TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
