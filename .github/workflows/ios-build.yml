@@ -1,0 +1,172 @@
+name: iOS build
+
+# iOS 앱이 컴파일되는지 확인 (서명 없이 시뮬레이터용으로 빌드)
+on:
+  push:
+    paths:
+      - 'ios/**'
+      - 'src/**'
+      - 'App.tsx'
+      - 'index.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'react-native.config.js'
+      - '.github/workflows/ios-build.yml'
+  workflow_dispatch:
+    inputs:
+      testflight:
+        description: 'TestFlight 에 서명된 빌드 올리기 (App Store 비밀값 4개 필요, ios/README.md 참고)'
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install JS dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Install CocoaPods
+        working-directory: ios
+        run: pod install
+
+      - name: Build for iOS Simulator
+        working-directory: ios
+        run: |
+          if ! xcodebuild \
+            -workspace HikerPro.xcworkspace \
+            -scheme HikerPro \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            ARCHS=arm64 \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build > build.log 2>&1; then
+            echo "===== errors ====="
+            grep -n -E ":[0-9]+:[0-9]+: (fatal )?error: |^error: |ld: |clang: error" -A2 build.log | head -150
+            grep -n -A8 "The following build commands failed" build.log
+            echo "===== tail ====="
+            tail -n 40 build.log
+            exit 1
+          fi
+          tail -n 5 build.log
+
+      - name: Launch on iOS Simulator (smoke test)
+        working-directory: ios
+        run: |
+          APP=build/DerivedData/Build/Products/Release-iphonesimulator/HikerPro.app
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone')))")
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl install "$DEVICE" "$APP"
+          xcrun simctl launch "$DEVICE" com.hikerpro.app
+          sleep 40
+          xcrun simctl io "$DEVICE" screenshot launch.png || true
+          xcrun simctl spawn "$DEVICE" log show --last 2m --style compact \
+            --predicate 'process == "HikerPro"' > app.log 2>&1 || true
+          echo "===== JS / native errors ====="
+          grep -E "Unhandled JS Exception|RCTFatal|Invariant Violation|TypeError|ReferenceError|Error:|Terminating app|NSInvalidArgumentException" app.log | head -60 || true
+          if xcrun simctl spawn "$DEVICE" launchctl list | grep -q "com.hikerpro.app"; then
+            echo "App is still running after 40s"
+          else
+            echo "App is NOT running (crashed or exited)"
+            ls ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -i hikerpro && head -80 ~/Library/Logs/DiagnosticReports/*HikerPro* || true
+            exit 1
+          fi
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-log
+          path: |
+            ios/build.log
+            ios/app.log
+            ios/launch.png
+          if-no-files-found: ignore
+
+  testflight:
+    # Actions → iOS build → Run workflow 에서 testflight 를 체크하면 실행된다
+    if: github.event_name == 'workflow_dispatch' && inputs.testflight
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Xcode 26 (App Store Connect only accepts builds made with the iOS 26 SDK or later)
+        run: |
+          X=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$X" ]; then echo "::error::Xcode 26 is not installed on this runner"; ls -d /Applications/Xcode*.app; exit 1; fi
+          sudo xcode-select -s "$X"
+          xcodebuild -version
+
+      - name: Check the App Store secrets are set
+        run: |
+          for v in TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
+            if [ -z "${!v}" ]; then echo "::error::Secret for $v is missing (see ios/README.md)"; exit 1; fi
+          done
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install JS dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Install CocoaPods
+        working-directory: ios
+        run: pod install
+
+      - name: Archive and upload to TestFlight (automatic signing with an App Store Connect API key)
+        working-directory: ios
+        run: |
+          set -o pipefail
+          echo "$ASC_KEY_P8" > "$RUNNER_TEMP/asc.p8"
+          AUTH="-allowProvisioningUpdates -authenticationKeyPath $RUNNER_TEMP/asc.p8 -authenticationKeyID $ASC_KEY_ID -authenticationKeyIssuerID $ASC_ISSUER_ID"
+          # 빌드 번호는 올릴 때마다 커져야 하므로 실행 번호 + 100 (지금 프로젝트 값 9 보다 항상 큼)
+          BUILD_NUMBER=$(( ${{ github.run_number }} + 100 ))
+          echo "Build number: $BUILD_NUMBER"
+          xcodebuild -workspace HikerPro.xcworkspace -scheme HikerPro -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/HikerPro.xcarchive" \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            $AUTH archive > archive.log 2>&1 || { grep -n -E "error:|ld: " archive.log | head -80; tail -n 40 archive.log; exit 1; }
+          tail -n 5 archive.log
+          cat > "$RUNNER_TEMP/export.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/HikerPro.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" $AUTH | tail -n 40
+
+      - name: Upload archive log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-testflight-log
+          path: ios/archive.log
+          if-no-files-found: ignore
