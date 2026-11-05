@@ -47,11 +47,33 @@ workflows:
         script: cd ios && pod install
       - name: Signing certificate and App Store profile (created on Apple's side when missing)
         script: |
+          set -e
           keychain initialize
+          if [ -z "${CERTIFICATE_PRIVATE_KEY:-}" ]; then
+            echo "CERTIFICATE_PRIVATE_KEY is missing: add it to the Environment variable group hikerpro_signing (ios/README.md)."
+            exit 1
+          fi
+          # Accept the key however it was pasted (Windows line endings, no BEGIN/END lines, base64-wrapped, ...)
+          # and turn it into a PEM private key file. See ci/normalize_cert_key.py (same as nowhere).
+          KEY_FILE="$CM_BUILD_DIR/cert_key"
+          python3 ci/normalize_cert_key.py "$KEY_FILE"
+          if grep -q "BEGIN OPENSSH PRIVATE KEY" "$KEY_FILE"; then
+            echo "Converting OpenSSH key to PEM."
+            ssh-keygen -p -N "" -m PEM -f "$KEY_FILE" >/dev/null
+          fi
+          if ! openssl pkey -in "$KEY_FILE" -noout 2>/dev/null; then
+            # Body pasted without header lines: try PKCS#8 instead of PKCS#1
+            sed -i.bak 's/RSA PRIVATE KEY/PRIVATE KEY/' "$KEY_FILE" && rm -f "$KEY_FILE.bak"
+            if ! openssl pkey -in "$KEY_FILE" -noout 2>/dev/null; then
+              echo "CERTIFICATE_PRIVATE_KEY cannot be read as a private key. It may be only partly copied: paste the whole cert_key file again."
+              exit 1
+            fi
+          fi
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
-            --certificate-key=@env:CERTIFICATE_PRIVATE_KEY \
+            --certificate-key "@file:$KEY_FILE" \
             --create
+          rm -f "$KEY_FILE"
           keychain add-certificates
           xcode-project use-profiles
       - name: Build number (always higher than the last TestFlight build)
