@@ -98,8 +98,9 @@ GitHub Actions로 올리면 번호가 더 작아 거절될 수 있습니다.
    아직 없다면 App Store Connect › 사용자 및 액세스 › **통합** › App Store Connect API › **팀 키** › **+** (액세스 **관리자**)로 만들고,
    Codemagic 왼쪽 **Settings › Integrations › Developer Portal › Connect** 에서 Issuer ID, Key ID, `.p8` 파일을 넣습니다.
 4. **Codemagic 환경 변수**: Applications › HIKER-PRO › **Environment variables**
-   - Variable name `CERTIFICATE_PRIVATE_KEY`, Value는 WEEKLINE 때 만든 `weekline_cert_key` 파일 내용 전체(같은 키를 쓰면 배포 인증서를 하나로 같이 씀),
+   - Variable name `CERTIFICATE_PRIVATE_KEY`, Value는 NOWHERE·WEEKLINE 에 넣은 것과 같은 키 파일 내용 전체(같은 키를 쓰면 배포 인증서를 하나로 같이 씀),
      Group `hikerpro_signing`, **Secret** 체크 › Add
+     - 윈도우에서 복사해 줄바꿈이 깨졌거나 BEGIN/END 줄이 빠져도 빌드가 `ci/normalize_cert_key.py` 로 정리하니 그대로 넣어도 됩니다.
      - 키 파일이 없다면 윈도우 PowerShell 에서 `ssh-keygen -t rsa -b 2048 -m PEM -f hikerpro_cert_key -q -N '""'` 로 만들고 그 내용을 넣습니다.
    - (권장) Variable name `APP_STORE_APPLE_ID`, Value는 2번의 Apple ID 숫자, Group `hikerpro_signing` › Add
 
