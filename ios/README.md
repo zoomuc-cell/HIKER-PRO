@@ -49,7 +49,7 @@ Xcode에서:
 - **멤버십(월간/연간 Pro, 관광객 이용권)**: `react-native-iap`(StoreKit / Play 결제)로 판매합니다 (가이드라인 3.1.1).
   App Store Connect에 아래 상품을 같은 ID로 만들어야 합니다.
   - 자동 갱신 구독(같은 구독 그룹 하나에): `hikerpro_pro_monthly`(1개월), `hikerpro_pro_yearly`(1년)
-  - **비갱신형 구독(Non-Renewing Subscription)**: `hikerpro_tourist_pass` — 소모성(Consumable)으로 만들면 안 됩니다.
+  - **비갱신형 구독(Non-Renewing Subscription)**: `hikerpro_tourist_pass_5d` — 소모성·비소모성으로 만들면 안 됩니다. (`hikerpro_tourist_pass` 는 비소모품으로 잘못 만들어 삭제했고, 삭제한 ID 는 재사용 불가)
     기간이 정해진 이용권은 Apple 규정상 비갱신형 구독이어야 하고, 한 번 만든 상품의 유형은 바꿀 수 없습니다.
     앱은 구매 시각 + 5일로 만료를 계산하며, 재설치·기기 변경 뒤 '구매 복원'으로 남은 기간이 되살아납니다.
   - Android는 구독 `hikerpro_pro`(기본 요금제 `monthly`, `yearly`)와 인앱 상품 `hikerpro_tourist_pass`
