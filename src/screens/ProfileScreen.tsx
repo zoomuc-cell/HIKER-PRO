@@ -472,7 +472,7 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
       key: 'help',
       icon: 'help-circle-outline',
       title: '도움말 / 불편 신고',
-      sub: 'admin@auratechnologies.kr',
+      sub: 'admin@aura-technologies.co.kr',
       onPress: () => setHelpVisible(true),
     },
   ];
@@ -745,13 +745,13 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>도움말 / 불편 신고</Text>
             <Text style={styles.bodyText}>
-              사용자 불편 신고는 admin@auratechnologies.kr로 연락해 주세요.
+              사용자 불편 신고는 admin@aura-technologies.co.kr로 연락해 주세요.
             </Text>
             <TouchableOpacity
               style={styles.primaryBtn}
               onPress={() =>
                 Linking.openURL(
-                  'mailto:admin@auratechnologies.kr?subject=' +
+                  'mailto:admin@aura-technologies.co.kr?subject=' +
                     encodeURIComponent('Hiker Pro 사용자 불편 신고'),
                 )
               }>
