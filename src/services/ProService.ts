@@ -4,9 +4,11 @@
 // - 구독 Pro
 //   · Android: 구독 상품 `hikerpro_pro` + 기본 요금제 `monthly`(1개월), `yearly`(1년)
 //   · iOS: 자동 갱신 구독 `hikerpro_pro_monthly`, `hikerpro_pro_yearly` (같은 구독 그룹)
-// - 관광객 이용권 (5일): `hikerpro_tourist_pass`
-//   · Android: 관리되는 인앱 상품(구매 후 소비 처리)
-//   · iOS: 비갱신형 구독(Non-Renewing Subscription). 기간이 정해진 이용권은 Apple 규정상
+// - 관광객 이용권 (5일)
+//   · Android: 관리되는 인앱 상품 `hikerpro_tourist_pass` (구매 후 소비 처리)
+//   · iOS: 비갱신형 구독(Non-Renewing Subscription) `hikerpro_tourist_pass_5d`.
+//     (`hikerpro_tourist_pass` 는 App Store Connect 에서 비소모품으로 잘못 만들어 삭제했고,
+//      Apple 은 삭제한 제품 ID 를 다시 쓸 수 없어서 iOS 만 ID 가 다르다.) 기간이 정해진 이용권은 Apple 규정상
 //     소모성 상품이 아니라 비갱신형 구독으로 등록해야 하고, 다른 기기에서도 복원할 수 있어야 한다.
 //
 // 서버가 없으므로 결제 확인은 스토어가 기기에 돌려주는 구매 정보를 기준으로 한다.
@@ -35,7 +37,7 @@ import {
 const IS_IOS = Platform.OS === 'ios';
 
 export const ANDROID_SUBSCRIPTION_ID = 'hikerpro_pro';
-export const TOURIST_PASS_ID = 'hikerpro_tourist_pass';
+export const TOURIST_PASS_ID = IS_IOS ? 'hikerpro_tourist_pass_5d' : 'hikerpro_tourist_pass';
 export const TOURIST_PASS_DAYS = 5;
 
 export type PlanId = 'monthly' | 'yearly';
