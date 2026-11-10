@@ -312,10 +312,13 @@ export const initPro = () => {
 
       const [subs, passes] = await Promise.all([
         fetchProducts({skus: SUBSCRIPTION_PRODUCT_IDS, type: 'subs'}).catch(() => null),
-        fetchProducts({skus: [TOURIST_PASS_ID], type: 'in-app'}).catch(() => null),
+        // iOS 의 관광객 이용권은 비갱신형 구독이라 StoreKit/OpenIAP 가 'subs' 쪽으로 분류한다.
+        // 'in-app' 으로만 찾으면 빈 목록이 와서 결제 화면에 이용권이 나오지 않는다
+        // (App Store 심사 2.1(b) "관광객 이용권을 바이너리에서 찾을 수 없음" 원인). 그래서 iOS 는 'all' 로 찾는다.
+        fetchProducts({skus: [TOURIST_PASS_ID], type: IS_IOS ? 'all' : 'in-app'}).catch(() => null),
       ]);
       subscriptionProduct = ((subs || []) as ProductSubscription[]).filter(p => p.type === 'subs');
-      const passProducts = ((passes || []) as Product[]).filter(p => p.type === 'in-app');
+      const passProducts = ((passes || []) as Product[]).filter(p => p.id === TOURIST_PASS_ID);
       const plans = buildPlans(subscriptionProduct, passProducts);
       setState({ready: true, storeAvailable: plans.length > 0, plans});
       if (plans.length === 0) {
