@@ -1,7 +1,11 @@
 import Geolocation from 'react-native-geolocation-service';
-import {AppState, PermissionsAndroid, Platform} from 'react-native';
+import {AppState, Platform} from 'react-native';
 import {accelerometer, barometer} from 'react-native-sensors';
-import {requestIosLocationPermission} from '../utils/permissions';
+import {
+  hasAndroidLocationPermission,
+  requestAndroidForegroundLocation,
+  requestIosLocationPermission,
+} from '../utils/permissions';
 
 type WatchCallback = (location: any) => void;
 
@@ -58,16 +62,11 @@ class LocationService {
 
   async requestPermission() {
     if (Platform.OS === 'android') {
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-        {
-          title: 'Hiker Pro 위치 권한',
-          message: 'Hiker Pro가 멀티 GNSS (GPS/GLONASS/BeiDou/Galileo)를 이용한 정밀 위치 추적을 위해 권한이 필요합니다.',
-          buttonPositive: '허용',
-          buttonNegative: '거부',
-        }
-      );
-      return granted === PermissionsAndroid.RESULTS.GRANTED;
+      // 이미 '정확한 위치' 또는 '대략적인 위치'가 있으면 다시 묻지 않는다.
+      if (await hasAndroidLocationPermission()) {
+        return true;
+      }
+      return requestAndroidForegroundLocation();
     }
     if (Platform.OS === 'ios') {
       return requestIosLocationPermission(false);
@@ -145,14 +144,19 @@ class LocationService {
   startBarometer() {
     if (this.barometerSubscription) return;
 
-    this.barometerSubscription = barometer.subscribe(
-      ({pressure}) => {
-        this.sensorData.pressure = pressure;
-      },
-      (error) => {
-        console.warn('Barometer error:', error);
-      }
-    );
+    // 기압계가 없는 폰(예: 갤럭시 A 시리즈)에서도 기록이 멈추지 않도록 오류는 무시한다.
+    try {
+      this.barometerSubscription = barometer.subscribe(
+        ({pressure}) => {
+          this.sensorData.pressure = pressure;
+        },
+        (error) => {
+          console.warn('Barometer error:', error);
+        }
+      );
+    } catch (error) {
+      console.warn('Barometer unavailable:', error);
+    }
   }
 
   /**
@@ -161,15 +165,19 @@ class LocationService {
   startAccelerometer() {
     if (this.accelerometerSubscription) return;
 
-    this.accelerometerSubscription = accelerometer.subscribe(
-      ({x, y, z}) => {
-        const magnitude = Math.sqrt(x * x + y * y + z * z);
-        this.sensorData.acceleration = magnitude;
-      },
-      (error) => {
-        console.warn('Accelerometer error:', error);
-      }
-    );
+    try {
+      this.accelerometerSubscription = accelerometer.subscribe(
+        ({x, y, z}) => {
+          const magnitude = Math.sqrt(x * x + y * y + z * z);
+          this.sensorData.acceleration = magnitude;
+        },
+        (error) => {
+          console.warn('Accelerometer error:', error);
+        }
+      );
+    } catch (error) {
+      console.warn('Accelerometer unavailable:', error);
+    }
   }
 
   /**
