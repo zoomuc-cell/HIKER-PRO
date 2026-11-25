@@ -47,9 +47,18 @@ jobs:
           printf '%s' "$KEY_B64" | tr -d ' \r\n\t' | base64 -d > "$RUNNER_TEMP/upload.jks" \
             || { echo "::error::ANDROID_KEYSTORE_BASE64 is not valid base64"; exit 1; }
           # 키 저장소·별칭·비밀번호가 맞는지 확인하고, Play Console 업로드 키와 비교할 SHA-1 을 출력
-          keytool -list -v -keystore "$RUNNER_TEMP/upload.jks" -storepass "$KS_PASS" -alias "$KEY_ALIAS" \
-            | grep -E "SHA1:|SHA-1:|Alias name|별칭" \
-            || { echo "::error::Keystore password or alias is wrong"; exit 1; }
+          # 앞뒤에 실수로 들어간 공백·줄바꿈은 지운다
+          KS_PASS="$(printf '%s' "$KS_PASS" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          KEY_ALIAS="$(printf '%s' "$KEY_ALIAS" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          if ! keytool -list -keystore "$RUNNER_TEMP/upload.jks" -storepass "$KS_PASS" > ks.txt 2>&1; then
+            echo "::error::Keystore password is wrong (ANDROID_KEYSTORE_PASSWORD)"; sed 's/^/  /' ks.txt | head -5; exit 1
+          fi
+          echo "Aliases in this keystore:"; grep -i "entry" ks.txt | cut -d, -f1 | sed 's/^/  /'
+          if ! keytool -list -v -keystore "$RUNNER_TEMP/upload.jks" -storepass "$KS_PASS" -alias "$KEY_ALIAS" > alias.txt 2>&1; then
+            echo "::error::Alias not found (ANDROID_KEY_ALIAS)"; head -3 alias.txt; exit 1
+          fi
+          grep -E "SHA1:|SHA256:" alias.txt
+          rm -f ks.txt alias.txt
 
       - name: Install JS dependencies
         run: npm ci --legacy-peer-deps
@@ -102,6 +111,8 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          trim() { printf '%s' "$1" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+          KS_PASS="$(trim "$KS_PASS")"; KEY_ALIAS="$(trim "$KEY_ALIAS")"; KEY_PASS="$(trim "$KEY_PASS")"
           ./gradlew --no-daemon bundleRelease \
             -PreactNativeArchitectures=armeabi-v7a,arm64-v8a \
             -PHIKER_RELEASE_STORE_FILE="$RUNNER_TEMP/upload.jks" \
