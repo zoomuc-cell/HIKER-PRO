@@ -35,6 +35,22 @@ jobs:
           distribution: zulu
           java-version: 17
 
+      # 업로드 키가 있으면 긴 빌드 전에 먼저 풀어서 비밀번호·별칭이 맞는지 확인한다
+      - name: Check upload key
+        if: env.HAS_KEY == 'true'
+        env:
+          KEY_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          # 붙여넣을 때 섞인 줄바꿈·공백(윈도우 CR 포함)은 지운 뒤 푼다
+          printf '%s' "$KEY_B64" | tr -d ' \r\n\t' | base64 -d > "$RUNNER_TEMP/upload.jks" \
+            || { echo "::error::ANDROID_KEYSTORE_BASE64 is not valid base64"; exit 1; }
+          # 키 저장소·별칭·비밀번호가 맞는지 확인하고, Play Console 업로드 키와 비교할 SHA-1 을 출력
+          keytool -list -v -keystore "$RUNNER_TEMP/upload.jks" -storepass "$KS_PASS" -alias "$KEY_ALIAS" \
+            | grep -E "SHA1:|SHA-1:|Alias name|별칭" \
+            || { echo "::error::Keystore password or alias is wrong"; exit 1; }
+
       - name: Install JS dependencies
         run: npm ci --legacy-peer-deps
 
@@ -82,12 +98,10 @@ jobs:
         if: env.HAS_KEY == 'true'
         working-directory: android
         env:
-          KEY_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "$KEY_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
           ./gradlew --no-daemon bundleRelease \
             -PreactNativeArchitectures=armeabi-v7a,arm64-v8a \
             -PHIKER_RELEASE_STORE_FILE="$RUNNER_TEMP/upload.jks" \
