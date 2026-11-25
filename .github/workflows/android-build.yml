@@ -20,6 +20,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      HAS_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -73,6 +75,35 @@ jobs:
           fi
           tail -n 5 build.log
           grep -c "com.android.vending.BILLING" app/build/intermediates/merged_manifests/release/*/AndroidManifest.xml 2>/dev/null || true
+
+      # 업로드 키가 저장소 Secrets 에 있으면 Google Play 에 올릴 서명된 .aab 를 만든다.
+      # 필요한 Secrets: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+      - name: Signed bundle (.aab for Google Play)
+        if: env.HAS_KEY == 'true'
+        working-directory: android
+        env:
+          KEY_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$KEY_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          ./gradlew --no-daemon bundleRelease \
+            -PreactNativeArchitectures=armeabi-v7a,arm64-v8a \
+            -PHIKER_RELEASE_STORE_FILE="$RUNNER_TEMP/upload.jks" \
+            -PHIKER_RELEASE_STORE_PASSWORD="$KS_PASS" \
+            -PHIKER_RELEASE_KEY_ALIAS="$KEY_ALIAS" \
+            -PHIKER_RELEASE_KEY_PASSWORD="$KEY_PASS" > bundle.log 2>&1 || { tail -n 80 bundle.log; exit 1; }
+          cp app/build/outputs/bundle/release/app-release.aab ../HIKERPRO.aab
+          rm -f "$RUNNER_TEMP/upload.jks"
+
+      - name: Upload signed bundle
+        if: env.HAS_KEY == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: HIKERPRO-play-bundle
+          path: HIKERPRO.aab
+          if-no-files-found: error
 
       - name: Upload build log
         if: always()

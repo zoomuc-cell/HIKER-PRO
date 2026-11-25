@@ -87,6 +87,35 @@ const showBackgroundLocationDisclosure = (): Promise<boolean> => {
   });
 };
 
+// Android: '정확한 위치'(FINE) 또는 '대략적인 위치'(COARSE) 중 하나라도 있으면 기록할 수 있다.
+export const hasAndroidLocationPermission = async (): Promise<boolean> => {
+  const [fine, coarse] = await Promise.all([
+    PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION),
+    PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION),
+  ]);
+  return fine || coarse;
+};
+
+// Android 12 이상에서는 FINE 만 따로 요청하면 시스템이 요청을 무시하고 바로 '거부'로 돌려준다.
+// (권한 창이 아예 뜨지 않아 활동 기록이 시작되지 않던 원인) 그래서 FINE 과 COARSE 를 함께 요청한다.
+// 사용자가 '대략적인 위치'만 골라도 기록은 시작한다.
+export const requestAndroidForegroundLocation = async (): Promise<boolean> => {
+  const result = await PermissionsAndroid.requestMultiple([
+    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+    PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+  ]);
+  const fine = result[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] === PermissionsAndroid.RESULTS.GRANTED;
+  const coarse = result[PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION] === PermissionsAndroid.RESULTS.GRANTED;
+  if (!fine && coarse) {
+    Alert.alert(
+      '정확한 위치를 켜면 더 좋아요',
+      '지금은 대략적인 위치로 기록합니다. 경로와 거리를 정확하게 기록하려면 설정 > 앱 > HIKERPRO > 권한 > 위치에서 "정확한 위치 사용"을 켜 주세요.',
+      [{text: '확인'}],
+    );
+  }
+  return fine || coarse;
+};
+
 export const requestLocationPermission = async (): Promise<boolean> => {
   if (Platform.OS === 'ios') {
     return requestIosLocationPermission();
@@ -96,9 +125,7 @@ export const requestLocationPermission = async (): Promise<boolean> => {
   }
 
   try {
-    const fineAlready = await PermissionsAndroid.check(
-      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-    );
+    const fineAlready = await hasAndroidLocationPermission();
     const needsBackgroundAsk =
       Platform.Version >= 29 &&
       !(await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION)) &&
@@ -116,18 +143,8 @@ export const requestLocationPermission = async (): Promise<boolean> => {
     }
 
     if (!fineAlready) {
-      const fineLocation = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-        {
-          title: 'HIKERPRO 위치 권한',
-          message:
-            '활동 중 이동 경로와 거리를 기록하려면 위치 권한이 필요합니다.',
-          buttonPositive: '허용',
-          buttonNegative: '취소',
-        },
-      );
-
-      if (fineLocation !== PermissionsAndroid.RESULTS.GRANTED) {
+      const foregroundGranted = await requestAndroidForegroundLocation();
+      if (!foregroundGranted) {
         return false;
       }
     }
