@@ -42,7 +42,11 @@ jobs:
           KEY_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          MAPS_KEY: ${{ secrets.MAPS_API_KEY }}
         run: |
+          # Play 빌드에 지도 키가 없으면 지도가 빈 화면이 된다 (긴 빌드 전에 먼저 확인)
+          [ -n "$(printf '%s' "$MAPS_KEY" | tr -d ' \r\n\t')" ] \
+            || { echo "::error::MAPS_API_KEY secret is missing: the map would be blank"; exit 1; }
           # 붙여넣을 때 섞인 줄바꿈·공백(윈도우 CR 포함)은 지운 뒤 푼다
           printf '%s' "$KEY_B64" | tr -d ' \r\n\t' | base64 -d > "$RUNNER_TEMP/upload.jks" \
             || { echo "::error::ANDROID_KEYSTORE_BASE64 is not valid base64"; exit 1; }
@@ -110,7 +114,11 @@ jobs:
           KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          MAPS_KEY: ${{ secrets.MAPS_API_KEY }}
         run: |
+          # 지도(Google Maps) 키가 없으면 지도가 빈 화면이 되므로 빌드를 멈춘다
+          MAPS_KEY="$(printf '%s' "$MAPS_KEY" | tr -d ' \r\n\t')"
+          [ -n "$MAPS_KEY" ] || { echo "::error::MAPS_API_KEY secret is missing: the map would be blank"; exit 1; }
           trim() { printf '%s' "$1" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
           KS_PASS="$(trim "$KS_PASS")"; KEY_ALIAS="$(trim "$KEY_ALIAS")"; KEY_PASS="$(trim "$KEY_PASS")"
           ./gradlew --no-daemon bundleRelease \
@@ -118,7 +126,8 @@ jobs:
             -PHIKER_RELEASE_STORE_FILE="$RUNNER_TEMP/upload.jks" \
             -PHIKER_RELEASE_STORE_PASSWORD="$KS_PASS" \
             -PHIKER_RELEASE_KEY_ALIAS="$KEY_ALIAS" \
-            -PHIKER_RELEASE_KEY_PASSWORD="$KEY_PASS" > bundle.log 2>&1 || { tail -n 80 bundle.log; exit 1; }
+            -PHIKER_RELEASE_KEY_PASSWORD="$KEY_PASS" \
+            -PMAPS_API_KEY="$MAPS_KEY" > bundle.log 2>&1 || { tail -n 80 bundle.log; exit 1; }
           cp app/build/outputs/bundle/release/app-release.aab ../HIKERPRO.aab
           rm -f "$RUNNER_TEMP/upload.jks"
 
