@@ -1,4 +1,4 @@
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {View, StyleSheet, ScrollView, TouchableOpacity, Alert, AppState, Image, Linking, Modal, PermissionsAndroid, Platform} from 'react-native';
 import type {ScrollViewInstance} from 'react-native';
 import MapView, {Marker, Polyline, PROVIDER_GOOGLE} from 'react-native-maps';
@@ -14,6 +14,7 @@ import {usePro} from '../services/ProService';
 import ProUpgradeModal from '../components/ProUpgradeModal';
 import {
   clearDraft,
+  deleteActivity,
   loadActivitySummaries,
   loadDraft,
   loadRoutePoints,
@@ -23,6 +24,22 @@ import {
 } from '../services/ActivityStore';
 import {startTrackingNotification, stopTrackingNotification} from '../services/TrackingForeground';
 import {resolveAppFileUri, toStoredFileRef} from '../utils/appFiles';
+import {
+  WEEKLY_GOAL_KEY,
+  WEEKLY_GOAL_OPTIONS_KM,
+  activityStreak,
+  elevationProfile,
+  findNewRecords,
+  formatDuration,
+  formatKm,
+  formatPace,
+  goalProgress,
+  isShortActivity,
+  kmSplits,
+  monthTrend,
+  parseWeeklyGoal,
+  weekTrend,
+} from '../utils/insights';
 
 const VISITED_KEY = 'hiker_visited_regions';
 // 기록 중 임시 저장 주기 (앱이 꺼져도 이 간격 안의 기록만 잃는다)
@@ -140,7 +157,43 @@ const TrackingScreen = ({route}: any) => {
   const [selectedRecord, setSelectedRecord] = useState<ActivityRecord | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<ActivityPhoto | null>(null);
   const [gpxUpgradeVisible, setGpxUpgradeVisible] = useState(false);
+  const [weeklyGoalKm, setWeeklyGoalKm] = useState(10);
+  const [goalEditing, setGoalEditing] = useState(false);
   const pro = usePro();
+
+  useEffect(() => {
+    AsyncStorage.getItem(WEEKLY_GOAL_KEY)
+      .then(raw => setWeeklyGoalKm(parseWeeklyGoal(raw)))
+      .catch(() => {});
+  }, []);
+
+  const changeWeeklyGoal = (km: number) => {
+    setWeeklyGoalKm(km);
+    setGoalEditing(false);
+    AsyncStorage.setItem(WEEKLY_GOAL_KEY, String(km)).catch(() => {});
+  };
+
+  // 저장된 기록 하나 지우기 (0km 같은 잘못된 기록 정리용)
+  const confirmDeleteRecord = (item: ActivityRecord) => {
+    Alert.alert(
+      '기록 삭제',
+      `${new Date(item.startedAt).getMonth() + 1}월 ${new Date(item.startedAt).getDate()}일 ${item.activityLabel} 기록(${formatKm(item.distanceM)})을 지울까요? 되돌릴 수 없습니다.`,
+      [
+        {text: '취소', style: 'cancel'},
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setHistory(await deleteActivity(item.id));
+            } catch (error) {
+              Alert.alert('기록 삭제', '기록을 지우지 못했습니다. 다시 시도해 주세요.');
+            }
+          },
+        },
+      ],
+    );
+  };
 
   const exportGpx = async (record: ActivityRecord) => {
     if (!pro.isPro) {
@@ -700,6 +753,8 @@ const TrackingScreen = ({route}: any) => {
     weightKg: number;
     points: TrackingPoint[];
     photos: ActivityPhoto[];
+    // 저장 뒤 신기록이면 알려 줄지 (활동 종료 버튼으로 끝낼 때만)
+    announceRecords?: boolean;
   };
 
   // 활동을 기록 목록에 저장한다. 성공하면 임시 저장본을 지우고 true.
@@ -747,8 +802,16 @@ const TrackingScreen = ({route}: any) => {
       photos: input.photos,
     };
 
+    let newRecords: ReturnType<typeof findNewRecords> = [];
     try {
-      setHistory(await saveActivity(record));
+      const saved = await saveActivity(record);
+      setHistory(saved);
+      if (input.announceRecords) {
+        newRecords = findNewRecords(
+          saved.filter(item => item.id !== record.id),
+          record,
+        );
+      }
     } catch (error) {
       console.error('Failed to save activity result:', error);
       try {
@@ -785,6 +848,16 @@ const TrackingScreen = ({route}: any) => {
     } catch (error) {
       console.warn('Failed to save visited regions:', error);
     }
+
+    if (newRecords.length > 0) {
+      Alert.alert(
+        '🎉 신기록 달성!',
+        `${record.activityLabel} ` +
+          newRecords
+            .map(item => `${item.label}: ${item.value} (이전 ${item.previous})`)
+            .join('\n'),
+      );
+    }
     return true;
   };
 
@@ -817,9 +890,35 @@ const TrackingScreen = ({route}: any) => {
       return;
     }
 
-    setDuration(Math.floor((endedAt - startedAt) / 1000));
+    const finalDurationSec = Math.floor((endedAt - startedAt) / 1000);
+    setDuration(finalDurationSec);
+
+    // 너무 짧은 기록(1분 미만, 거의 움직이지 않음)은 저장할지 먼저 묻는다. 사진이 있으면 그냥 저장.
+    if (
+      photosRef.current.length === 0 &&
+      isShortActivity(finalDurationSec, distanceRef.current, elevationRef.current)
+    ) {
+      const keep = await new Promise<boolean>(resolve =>
+        Alert.alert(
+          '기록이 아주 짧아요',
+          `${formatDuration(finalDurationSec)} 동안 ${formatKm(distanceRef.current)} 이동했어요.\n이 기록을 저장할까요?`,
+          [
+            {text: '저장 안 함', style: 'destructive', onPress: () => resolve(false)},
+            {text: '저장', onPress: () => resolve(true)},
+          ],
+          {cancelable: false},
+        ),
+      );
+      if (!keep) {
+        await clearDraft();
+        setStartTime(null);
+        startTimeRef.current = null;
+        return;
+      }
+    }
 
     await finalizeActivity({
+      announceRecords: true,
       activityType: activityRef.current,
       startedAt,
       endedAt,
@@ -914,6 +1013,33 @@ const TrackingScreen = ({route}: any) => {
         : historyPeriod === 'monthly'
           ? '\uC774\uBC88 \uB2EC'
           : '\uC804\uCCB4';
+
+  const week = weekTrend(history, now);
+  const month = monthTrend(history, now);
+  const streak = activityStreak(history, now);
+  const goalRatio = goalProgress(week.thisWeek.distanceM, weeklyGoalKm);
+  const weekMaxM = Math.max(...week.dailyDistanceM, 1);
+  const changeText = (pct: number | null, label: string, previousM: number) =>
+    pct === null
+      ? `${label} 기록이 없어 비교할 수 없어요`
+      : `${label}(${(previousM / 1000).toFixed(1)}km)보다 ${pct >= 0 ? '+' : ''}${pct}%`;
+
+  // 경로 화면: 1km 구간 기록과 고도 그래프
+  const routeSplits = useMemo(
+    () => (selectedRecord?.routePoints ? kmSplits(selectedRecord.routePoints) : []),
+    [selectedRecord],
+  );
+  const routeProfile = useMemo(
+    () => (selectedRecord?.routePoints ? elevationProfile(selectedRecord.routePoints) : null),
+    [selectedRecord],
+  );
+  const fastestSplit = routeSplits
+    .filter(split => !split.partial)
+    .reduce<number | null>((best, split) => (best === null || split.paceSecPerKm < best ? split.paceSecPerKm : best), null);
+  const routeAvgPace =
+    selectedRecord && selectedRecord.distanceM >= 100 && selectedRecord.durationSec > 0
+      ? selectedRecord.durationSec / (selectedRecord.distanceM / 1000)
+      : 0;
 
   return (
     <ScrollView ref={scrollRef} style={styles.container}>
@@ -1046,6 +1172,89 @@ const TrackingScreen = ({route}: any) => {
          </Card.Content>
        </Card>
 
+       <Text style={styles.sectionTitle}>활동 인사이트</Text>
+       <Card style={styles.insightCard}>
+         <Card.Content>
+           <View style={styles.insightTopRow}>
+             <Text style={styles.insightLabel}>이번 주 거리</Text>
+             <Text style={styles.insightBig}>{(week.thisWeek.distanceM / 1000).toFixed(1)}km</Text>
+           </View>
+           <Text style={styles.insightSub}>
+             {week.thisWeek.count}회 · {formatDuration(week.thisWeek.durationSec)} ·{' '}
+             {changeText(week.changePct, '지난 주', week.lastWeek.distanceM)}
+           </Text>
+           <View style={styles.weekBars}>
+             {week.dailyDistanceM.map((meters, index) => (
+               <View key={index} style={styles.weekBarCol}>
+                 <View style={styles.weekBarTrack}>
+                   <View
+                     style={[
+                       styles.weekBarFill,
+                       {height: `${meters > 0 ? Math.max(6, (meters / weekMaxM) * 100) : 0}%`},
+                       index === week.todayIndex && styles.weekBarToday,
+                     ]}
+                   />
+                 </View>
+                 <Text style={[styles.weekBarLabel, index === week.todayIndex && styles.weekBarLabelToday]}>
+                   {'월화수목금토일'[index]}
+                 </Text>
+               </View>
+             ))}
+           </View>
+           <Text style={styles.insightSub}>
+             이번 달 {(month.thisMonth.distanceM / 1000).toFixed(1)}km ({month.thisMonth.count}회) ·{' '}
+             {changeText(month.changePct, '지난 달', month.lastMonth.distanceM)}
+           </Text>
+
+           <View style={styles.insightDivider} />
+           <View style={styles.insightRow}>
+             <Icon name="fire" size={22} color={streak.current > 0 ? '#E65100' : '#BDBDBD'} />
+             <View style={styles.insightRowText}>
+               <Text style={styles.insightRowTitle}>
+                 {streak.current > 0 ? `${streak.current}일 연속 활동 중` : '연속 기록 없음'}
+               </Text>
+               <Text style={styles.insightSub}>
+                 {streak.current > 0 && !streak.activeToday
+                   ? '오늘도 활동하면 연속 기록이 이어져요'
+                   : streak.current > 0
+                     ? '오늘 활동 완료!'
+                     : '오늘 활동하면 연속 기록이 시작돼요'}
+                 {streak.best > 0 ? ` · 최고 ${streak.best}일` : ''}
+               </Text>
+             </View>
+           </View>
+
+           <View style={styles.insightDivider} />
+           <View style={styles.insightRow}>
+             <Icon name="flag-checkered" size={22} color="#2E7D32" />
+             <View style={styles.insightRowText}>
+               <Text style={styles.insightRowTitle}>주간 목표 {weeklyGoalKm}km</Text>
+               <Text style={styles.insightSub}>
+                 {goalRatio >= 1
+                   ? '이번 주 목표 달성! 🎉'
+                   : `${(week.thisWeek.distanceM / 1000).toFixed(1)}km / ${weeklyGoalKm}km (${Math.round(goalRatio * 100)}%) · ${((weeklyGoalKm * 1000 - week.thisWeek.distanceM) / 1000).toFixed(1)}km 남음`}
+               </Text>
+             </View>
+             <Button compact onPress={() => setGoalEditing(!goalEditing)}>
+               {goalEditing ? '닫기' : '바꾸기'}
+             </Button>
+           </View>
+           <ProgressBar progress={goalRatio} color="#2E7D32" style={styles.goalBar} />
+           {goalEditing && (
+             <View style={styles.goalChips}>
+               {WEEKLY_GOAL_OPTIONS_KM.map(km => (
+                 <TouchableOpacity
+                   key={km}
+                   style={[styles.goalChip, km === weeklyGoalKm && styles.goalChipActive]}
+                   onPress={() => changeWeeklyGoal(km)}>
+                   <Text style={[styles.goalChipText, km === weeklyGoalKm && styles.goalChipTextActive]}>{km}km</Text>
+                 </TouchableOpacity>
+               ))}
+             </View>
+           )}
+         </Card.Content>
+       </Card>
+
        <Text
         style={styles.sectionTitle}
         onLayout={event => {
@@ -1132,11 +1341,16 @@ const TrackingScreen = ({route}: any) => {
                     )}
                    </View>
                  </View>
-                 {(item.hasRoute || item.routePoints?.length || item.photos?.length) ? (
-                   <Button icon="map-marker-path" onPress={() => openRecord(item)}>
-                     경로·사진 보기 {item.photos?.length ? `(${item.photos.length}장)` : ''}
+                 <View style={styles.historyButtons}>
+                   {(item.hasRoute || item.routePoints?.length || item.photos?.length) ? (
+                     <Button icon="map-marker-path" onPress={() => openRecord(item)}>
+                       경로·구간·고도 {item.photos?.length ? `(사진 ${item.photos.length}장)` : ''}
+                     </Button>
+                   ) : <View />}
+                   <Button icon="delete-outline" textColor="#9E9E9E" compact onPress={() => confirmDeleteRecord(item)}>
+                     삭제
                    </Button>
-                 ) : null}
+                 </View>
                </Card.Content>
              </Card>
           );
@@ -1224,6 +1438,71 @@ const TrackingScreen = ({route}: any) => {
           ) : (
             <Text style={styles.noRouteText}>저장된 GPS 경로가 없습니다. 사진은 아래에서 확인할 수 있습니다.</Text>
           )}
+          {selectedRecord && (routeSplits.length > 0 || routeProfile) ? (
+            <ScrollView style={styles.routeInsights} contentContainerStyle={styles.routeInsightsContent}>
+              <View style={styles.routeSummaryRow}>
+                <View style={styles.routeSummaryItem}>
+                  <Text style={styles.routeSummaryValue}>{formatKm(selectedRecord.distanceM)}</Text>
+                  <Text style={styles.routeSummaryLabel}>거리</Text>
+                </View>
+                <View style={styles.routeSummaryItem}>
+                  <Text style={styles.routeSummaryValue}>{formatDuration(selectedRecord.durationSec)}</Text>
+                  <Text style={styles.routeSummaryLabel}>시간</Text>
+                </View>
+                <View style={styles.routeSummaryItem}>
+                  <Text style={styles.routeSummaryValue}>{formatPace(routeAvgPace)}</Text>
+                  <Text style={styles.routeSummaryLabel}>평균 페이스(/km)</Text>
+                </View>
+                <View style={styles.routeSummaryItem}>
+                  <Text style={styles.routeSummaryValue}>{selectedRecord.elevationM}m</Text>
+                  <Text style={styles.routeSummaryLabel}>상승 고도</Text>
+                </View>
+              </View>
+
+              {routeProfile && (
+                <>
+                  <Text style={styles.routeSectionTitle}>고도 그래프</Text>
+                  <View style={styles.elevationRow}>
+                    <View style={styles.elevationAxis}>
+                      <Text style={styles.elevationAxisText}>{Math.round(routeProfile.maxAltitude)}m</Text>
+                      <Text style={styles.elevationAxisText}>{Math.round(routeProfile.minAltitude)}m</Text>
+                    </View>
+                    <View style={styles.elevationChart}>
+                      {routeProfile.samples.map((sample, index) => {
+                        const range = routeProfile.maxAltitude - routeProfile.minAltitude;
+                        const ratio = range > 0 ? (sample.altitude - routeProfile.minAltitude) / range : 0.5;
+                        return <View key={index} style={[styles.elevationBar, {height: 6 + ratio * 74}]} />;
+                      })}
+                    </View>
+                  </View>
+                  <View style={styles.elevationFooter}>
+                    <Text style={styles.elevationAxisText}>0km</Text>
+                    <Text style={styles.elevationAxisText}>{formatKm(routeProfile.totalDistanceM)}</Text>
+                  </View>
+                </>
+              )}
+
+              {routeSplits.length > 0 && (
+                <>
+                  <Text style={styles.routeSectionTitle}>1km 구간 기록</Text>
+                  {routeSplits.map(split => {
+                    const fastest = !split.partial && split.paceSecPerKm === fastestSplit && routeSplits.length > 1;
+                    return (
+                      <View key={split.index} style={styles.splitRow}>
+                        <Text style={styles.splitKm}>
+                          {split.partial ? `+${(split.distanceM / 1000).toFixed(2)}km` : `${split.index}km`}
+                        </Text>
+                        <Text style={[styles.splitPace, fastest && styles.splitPaceFastest]}>
+                          {formatPace(split.paceSecPerKm)}/km{fastest ? ' ⚡' : ''}
+                        </Text>
+                        <Text style={styles.splitTime}>{formatDuration(split.durationSec)}</Text>
+                      </View>
+                    );
+                  })}
+                </>
+              )}
+            </ScrollView>
+          ) : null}
           {selectedPhoto && (
             <View style={styles.selectedPhotoBox}>
               <Image source={{uri: resolveAppFileUri(selectedPhoto.uri)}} style={styles.selectedPhotoImage} resizeMode="contain" />
@@ -1353,6 +1632,47 @@ const styles = StyleSheet.create({
    photoStripContent: {padding: 8, gap: 10},
    photoThumbnail: {height: 76, width: 76, borderRadius: 8},
    photoTime: {fontSize: 11, color: '#555'},
+   historyButtons: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
+   insightCard: {marginHorizontal: 16, marginBottom: 8, elevation: 2},
+   insightTopRow: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline'},
+   insightLabel: {fontSize: 14, color: '#666'},
+   insightBig: {fontSize: 24, fontWeight: 'bold', color: '#2E7D32'},
+   insightSub: {fontSize: 12, color: '#777', marginTop: 2},
+   weekBars: {flexDirection: 'row', justifyContent: 'space-between', marginVertical: 12},
+   weekBarCol: {flex: 1, alignItems: 'center'},
+   weekBarTrack: {height: 70, width: 18, borderRadius: 6, backgroundColor: '#EEEEEE', justifyContent: 'flex-end', overflow: 'hidden'},
+   weekBarFill: {width: '100%', backgroundColor: '#81C784', borderRadius: 6},
+   weekBarToday: {backgroundColor: '#2E7D32'},
+   weekBarLabel: {fontSize: 11, color: '#888', marginTop: 4},
+   weekBarLabelToday: {color: '#2E7D32', fontWeight: 'bold'},
+   insightDivider: {height: 1, backgroundColor: '#EEEEEE', marginVertical: 12},
+   insightRow: {flexDirection: 'row', alignItems: 'center'},
+   insightRowText: {flex: 1, marginLeft: 10},
+   insightRowTitle: {fontSize: 15, fontWeight: 'bold', color: '#333'},
+   goalBar: {height: 8, borderRadius: 4, marginTop: 8},
+   goalChips: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10},
+   goalChip: {paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: '#2E7D32'},
+   goalChipActive: {backgroundColor: '#2E7D32'},
+   goalChipText: {color: '#2E7D32', fontSize: 13},
+   goalChipTextActive: {color: '#fff', fontWeight: 'bold'},
+   routeInsights: {flexGrow: 0, maxHeight: 260, borderTopWidth: 1, borderTopColor: '#EEEEEE'},
+   routeInsightsContent: {padding: 12},
+   routeSummaryRow: {flexDirection: 'row', justifyContent: 'space-between'},
+   routeSummaryItem: {flex: 1, alignItems: 'center'},
+   routeSummaryValue: {fontSize: 15, fontWeight: 'bold', color: '#333'},
+   routeSummaryLabel: {fontSize: 11, color: '#888', marginTop: 2},
+   routeSectionTitle: {fontSize: 14, fontWeight: 'bold', color: '#333', marginTop: 14, marginBottom: 6},
+   elevationRow: {flexDirection: 'row', height: 84},
+   elevationAxis: {width: 44, justifyContent: 'space-between'},
+   elevationAxisText: {fontSize: 10, color: '#888'},
+   elevationChart: {flex: 1, flexDirection: 'row', alignItems: 'flex-end', gap: 1},
+   elevationBar: {flex: 1, backgroundColor: '#8D6E63', borderTopLeftRadius: 2, borderTopRightRadius: 2},
+   elevationFooter: {flexDirection: 'row', justifyContent: 'space-between', marginLeft: 44},
+   splitRow: {flexDirection: 'row', alignItems: 'center', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: '#F5F5F5'},
+   splitKm: {width: 70, fontSize: 13, color: '#555'},
+   splitPace: {flex: 1, fontSize: 13, color: '#333'},
+   splitPaceFastest: {color: '#E65100', fontWeight: 'bold'},
+   splitTime: {fontSize: 12, color: '#888'},
   periodTabs: {
     flexDirection: 'row',
     marginHorizontal: 16,
