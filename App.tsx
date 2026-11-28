@@ -21,6 +21,7 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import TrackingScreen from './src/screens/TrackingScreen';
 import HikingPlanScreen from './src/screens/HikingPlanScreen';
 import StatsScreen from './src/screens/StatsScreen';
+import PhotoAlbumScreen from './src/screens/PhotoAlbumScreen';
 import {isPlanImportUrl} from './src/utils/planShare';
 import {initPro} from './src/services/ProService';
 
@@ -173,6 +174,16 @@ const AppTabs = () => {
           options={{
             title: '상세 통계',
             tabBarLabel: '상세 통계',
+            tabBarButton: () => null,
+          }}
+        />
+        {/* 숨겨진 route: 홈 '내 사진첩' / 프로필 '사진첩'에서 진입 */}
+        <Tab.Screen
+          name="PhotoAlbum"
+          component={PhotoAlbumScreen}
+          options={{
+            title: '사진첩',
+            tabBarLabel: '사진첩',
             tabBarButton: () => null,
           }}
         />

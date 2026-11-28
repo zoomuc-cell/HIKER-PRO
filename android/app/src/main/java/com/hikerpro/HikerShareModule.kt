@@ -364,6 +364,61 @@ class HikerShareModule(private val reactContext: ReactApplicationContext) :
   }
 
   /**
+   * 사진 여러 장 + 선택 텍스트 공유 (ACTION_SEND_MULTIPLE). 사진첩의 "여러 장 보내기"용.
+   * 각 경로는 shareImage 와 같은 규칙(앱 내부 파일만)으로 검사하고, 없는 파일은 건너뛴다.
+   */
+  @ReactMethod
+  fun shareImages(paths: ReadableArray?, message: String?, title: String?, promise: Promise) {
+    val context = reactContext.applicationContext
+    val authority = providerAuthority(context)
+    if (context.packageManager.resolveContentProvider(authority, 0) == null) {
+      promise.reject("E_NO_PROVIDER", "FileProvider($authority)를 찾을 수 없습니다.")
+      return
+    }
+
+    val uris = ArrayList<Uri>()
+    if (paths != null) {
+      for (i in 0 until minOf(paths.size(), 100)) {
+        val file = resolveAppFile(paths.getString(i)) ?: continue
+        try {
+          uris.add(FileProvider.getUriForFile(context, authority, file))
+        } catch (e: Exception) {
+          // 주소를 만들 수 없는 파일은 건너뜀
+        }
+      }
+    }
+    if (uris.isEmpty()) {
+      promise.reject("E_FILE_NOT_FOUND", "파일을 찾을 수 없습니다.")
+      return
+    }
+
+    try {
+      val text = message?.trim().orEmpty()
+      val intent = if (uris.size == 1) {
+        Intent(Intent.ACTION_SEND).apply { putExtra(Intent.EXTRA_STREAM, uris[0]) }
+      } else {
+        Intent(Intent.ACTION_SEND_MULTIPLE).apply { putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris) }
+      }
+      intent.type = "image/*"
+      if (text.isNotEmpty()) intent.putExtra(Intent.EXTRA_TEXT, text)
+      if (!title.isNullOrBlank()) intent.putExtra(Intent.EXTRA_SUBJECT, title)
+      val clip = ClipData(
+          ClipDescription(title ?: "HIKERPRO", arrayOf("image/*")),
+          ClipData.Item(uris[0]),
+      )
+      uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
+      intent.clipData = clip
+      intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+      startChooser(intent, title)
+      promise.resolve(uris.size)
+    } catch (e: ActivityNotFoundException) {
+      promise.reject("E_NO_APP", "공유할 수 있는 앱이 없습니다.", e)
+    } catch (e: Exception) {
+      promise.reject("E_SHARE_FAILED", e.message, e)
+    }
+  }
+
+  /**
    * 앱 내부 파일 1개 공유 (GPX, 백업 JSON 등). 이미지가 아닌 파일용.
    */
   @ReactMethod
