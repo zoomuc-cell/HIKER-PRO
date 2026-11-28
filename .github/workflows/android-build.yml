@@ -16,6 +16,9 @@ on:
       - '.github/scripts/**'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -146,3 +149,33 @@ jobs:
           name: android-build-log
           path: android/build.log
           if-no-files-found: ignore
+
+      # 코드가 올라오면 휴대폰에 바로 설치할 수 있는 테스트 앱을 "test-latest" 릴리스로 올린다.
+      # 패키지 이름이 com.hikerpro.app.test 라서 스토어 앱과 따로 깔리고 기존 기록도 그대로 남는다.
+      - name: Test APK for phone
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        working-directory: android
+        env:
+          MAPS_KEY: ${{ secrets.MAPS_API_KEY }}
+        run: |
+          sed -i 's|<string name="app_name">[^<]*</string>|<string name="app_name">HIKER 테스트</string>|' app/src/main/res/values/strings.xml
+          MAPS_KEY="$(printf '%s' "$MAPS_KEY" | tr -d ' \r\n\t')"
+          ./gradlew --no-daemon assembleRelease -PHIKER_TEST_BUILD=true \
+            -PreactNativeArchitectures=armeabi-v7a,arm64-v8a \
+            -PMAPS_API_KEY="$MAPS_KEY" > test-apk.log 2>&1 || { tail -n 80 test-apk.log; exit 1; }
+          cp app/build/outputs/apk/release/app-release.apk ../hikerpro-test.apk
+          git checkout -- app/src/main/res/values/strings.xml
+
+      - name: Publish test release
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test-latest
+          name: 테스트용 최신 버전 (안드로이드)
+          prerelease: true
+          make_latest: false
+          body: |
+            최신 코드로 자동으로 만든 테스트용 안드로이드 앱입니다 (HIKER 테스트).
+            휴대폰에서 아래 hikerpro-test.apk 를 눌러 받아 설치하세요. 스토어 앱과 따로 설치됩니다.
+            빌드 커밋: ${{ github.sha }}
+          files: hikerpro-test.apk

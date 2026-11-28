@@ -87,6 +87,12 @@ android {
         missingDimensionStrategy "store", "play"
         missingDimensionStrategy "react-native-camera", "general"
         manifestPlaceholders = [MAPS_API_KEY: project.findProperty("MAPS_API_KEY") ?: ""]
+        // 휴대폰 직접 설치용 테스트 앱 (CI 에서 -PHIKER_TEST_BUILD=true 일 때만).
+        // 스토어 앱과 따로 깔리도록 패키지 이름 뒤에 .test 를 붙인다.
+        if (project.hasProperty("HIKER_TEST_BUILD")) {
+            applicationIdSuffix ".test"
+            versionNameSuffix "-test"
+        }
     }
     signingConfigs {
         release {
