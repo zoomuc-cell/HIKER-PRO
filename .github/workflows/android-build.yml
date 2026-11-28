@@ -35,6 +35,35 @@ jobs:
           distribution: zulu
           java-version: 17
 
+      # 업로드 키가 있으면 긴 빌드 전에 먼저 풀어서 비밀번호·별칭이 맞는지 확인한다
+      - name: Check upload key
+        if: env.HAS_KEY == 'true'
+        env:
+          KEY_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          MAPS_KEY: ${{ secrets.MAPS_API_KEY }}
+        run: |
+          # Play 빌드에 지도 키가 없으면 지도가 빈 화면이 된다 (긴 빌드 전에 먼저 확인)
+          [ -n "$(printf '%s' "$MAPS_KEY" | tr -d ' \r\n\t')" ] \
+            || { echo "::error::MAPS_API_KEY secret is missing: the map would be blank"; exit 1; }
+          # 붙여넣을 때 섞인 줄바꿈·공백(윈도우 CR 포함)은 지운 뒤 푼다
+          printf '%s' "$KEY_B64" | tr -d ' \r\n\t' | base64 -d > "$RUNNER_TEMP/upload.jks" \
+            || { echo "::error::ANDROID_KEYSTORE_BASE64 is not valid base64"; exit 1; }
+          # 키 저장소·별칭·비밀번호가 맞는지 확인하고, Play Console 업로드 키와 비교할 SHA-1 을 출력
+          # 앞뒤에 실수로 들어간 공백·줄바꿈은 지운다
+          KS_PASS="$(printf '%s' "$KS_PASS" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          KEY_ALIAS="$(printf '%s' "$KEY_ALIAS" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          if ! keytool -list -keystore "$RUNNER_TEMP/upload.jks" -storepass "$KS_PASS" > ks.txt 2>&1; then
+            echo "::error::Keystore password is wrong (ANDROID_KEYSTORE_PASSWORD)"; sed 's/^/  /' ks.txt | head -5; exit 1
+          fi
+          echo "Aliases in this keystore:"; grep -i "entry" ks.txt | cut -d, -f1 | sed 's/^/  /'
+          if ! keytool -list -v -keystore "$RUNNER_TEMP/upload.jks" -storepass "$KS_PASS" -alias "$KEY_ALIAS" > alias.txt 2>&1; then
+            echo "::error::Alias not found (ANDROID_KEY_ALIAS)"; head -3 alias.txt; exit 1
+          fi
+          grep -E "SHA1:|SHA256:" alias.txt
+          rm -f ks.txt alias.txt
+
       - name: Install JS dependencies
         run: npm ci --legacy-peer-deps
 
@@ -82,18 +111,23 @@ jobs:
         if: env.HAS_KEY == 'true'
         working-directory: android
         env:
-          KEY_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          MAPS_KEY: ${{ secrets.MAPS_API_KEY }}
         run: |
-          echo "$KEY_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          # 지도(Google Maps) 키가 없으면 지도가 빈 화면이 되므로 빌드를 멈춘다
+          MAPS_KEY="$(printf '%s' "$MAPS_KEY" | tr -d ' \r\n\t')"
+          [ -n "$MAPS_KEY" ] || { echo "::error::MAPS_API_KEY secret is missing: the map would be blank"; exit 1; }
+          trim() { printf '%s' "$1" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+          KS_PASS="$(trim "$KS_PASS")"; KEY_ALIAS="$(trim "$KEY_ALIAS")"; KEY_PASS="$(trim "$KEY_PASS")"
           ./gradlew --no-daemon bundleRelease \
             -PreactNativeArchitectures=armeabi-v7a,arm64-v8a \
             -PHIKER_RELEASE_STORE_FILE="$RUNNER_TEMP/upload.jks" \
             -PHIKER_RELEASE_STORE_PASSWORD="$KS_PASS" \
             -PHIKER_RELEASE_KEY_ALIAS="$KEY_ALIAS" \
-            -PHIKER_RELEASE_KEY_PASSWORD="$KEY_PASS" > bundle.log 2>&1 || { tail -n 80 bundle.log; exit 1; }
+            -PHIKER_RELEASE_KEY_PASSWORD="$KEY_PASS" \
+            -PMAPS_API_KEY="$MAPS_KEY" > bundle.log 2>&1 || { tail -n 80 bundle.log; exit 1; }
           cp app/build/outputs/bundle/release/app-release.aab ../HIKERPRO.aab
           rm -f "$RUNNER_TEMP/upload.jks"
 

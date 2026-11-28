@@ -135,6 +135,17 @@ export const saveActivity = async (record: any) => {
   return next;
 };
 
+// 활동 하나를 지운다 (목록과 경로 모두). 남은 목록을 돌려준다.
+export const deleteActivity = async (activityId: string) => {
+  const existing = await loadActivitySummaries();
+  const next = existing.filter(item => item.id !== activityId);
+  await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+  try {
+    await AsyncStorage.removeItem(routeKeyFor(String(activityId)));
+  } catch (e) {}
+  return next;
+};
+
 // 경로 키 전체 (백업용)
 export const listRouteKeys = async (): Promise<string[]> => {
   const keys = await AsyncStorage.getAllKeys();
