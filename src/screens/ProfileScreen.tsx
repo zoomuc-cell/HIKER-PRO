@@ -441,6 +441,13 @@ const ProfileScreen = ({navigation}: {navigation: any}) => {
       onPress: () => requirePro('기록 백업·복원', openBackupMenu),
     },
     {
+      key: 'album',
+      icon: 'image-multiple-outline',
+      title: '사진첩',
+      sub: '찍은 사진 보기·보내기·카테고리 정리',
+      onPress: () => navigation.navigate('PhotoAlbum'),
+    },
+    {
       key: 'contact',
       icon: 'card-account-phone-outline',
       title: '비상 연락처',

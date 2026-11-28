@@ -14,6 +14,12 @@ RCT_EXTERN_METHOD(shareImage:(NSString *)path
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(shareImages:(NSArray *)paths
+                  message:(NSString *)message
+                  title:(NSString *)title
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(shareFile:(NSString *)path
                   mimeType:(NSString *)mimeType
                   title:(NSString *)title

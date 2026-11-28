@@ -323,6 +323,10 @@ const HomeScreen = ({navigation}: any) => {
         location
           ? '촬영 시각과 위치를 함께 저장했습니다.'
           : '사진을 저장했습니다. 신뢰할 수 있는 GPS 위치가 없어 위치 정보는 저장하지 않았습니다.',
+        [
+          {text: '확인', style: 'cancel'},
+          {text: '사진첩 보기', onPress: () => navigation.navigate('PhotoAlbum')},
+        ],
       );
     } catch (error) {
       console.error('Home photo error:', error);
@@ -569,6 +573,19 @@ const HomeScreen = ({navigation}: any) => {
           })}
         </View>
 
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="내 사진첩 열기"
+          onPress={() => navigation.navigate('PhotoAlbum')}
+          style={({pressed}) => [styles.albumButton, pressed && styles.quickButtonPressed]}>
+          <Icon name="image-multiple" size={26} color="#1565C0" />
+          <View style={styles.locationTextBox}>
+            <Text style={styles.locationTitle}>내 사진첩</Text>
+            <Text style={styles.locationSubtitle}>찍은 사진을 모아 보고, 보내고, 카테고리로 정리합니다.</Text>
+          </View>
+          <Icon name="chevron-right" size={26} color="#90A4AE" />
+        </Pressable>
+
         <View style={styles.locationInfo}>
           <Icon name="satellite-variant" size={23} color="#1565C0" />
           <View style={styles.locationTextBox}>
@@ -760,6 +777,17 @@ const styles = StyleSheet.create({
     fontSize: 21,
     fontWeight: '900',
     letterSpacing: 1,
+  },
+
+  albumButton: {
+    marginHorizontal: 14,
+    marginTop: 14,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    elevation: 2,
   },
 
   locationInfo: {

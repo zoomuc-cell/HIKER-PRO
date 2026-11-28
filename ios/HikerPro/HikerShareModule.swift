@@ -92,6 +92,41 @@ final class HikerShareModule: NSObject {
     }
   }
 
+  // MARK: - shareImages
+
+  /// 사진 여러 장 + 선택 텍스트 공유 (사진첩의 "여러 장 보내기"). 없는 파일·앱 밖 파일은 건너뛴다.
+  @objc(shareImages:message:title:resolver:rejecter:)
+  func shareImages(
+    _ paths: [String]?,
+    message: String?,
+    title: String?,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    let urls: [URL] = (paths ?? []).prefix(100).compactMap { raw in
+      let path = raw.trimmingCharacters(in: .whitespaces)
+      guard path.hasPrefix("file://") || path.hasPrefix("/"),
+            let url = fileURL(from: path), fileExists(url), isInsideAppSandbox(url) else { return nil }
+      return url
+    }
+    guard !urls.isEmpty else {
+      reject("E_FILE_NOT_FOUND", "파일을 찾을 수 없습니다.", nil)
+      return
+    }
+    let text = message?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    DispatchQueue.main.async {
+      var items: [Any] = urls
+      if !text.isEmpty {
+        items.append(ShareTextItem(text: text, subject: title))
+      }
+      guard self.presentShareSheet(items: items) else {
+        reject("E_NO_APP", "공유 화면을 열 수 없습니다.", nil)
+        return
+      }
+      resolve(urls.count)
+    }
+  }
+
   // MARK: - shareFile
 
   /// 앱 내부 파일 1개 공유 (GPX, 백업 JSON 등)

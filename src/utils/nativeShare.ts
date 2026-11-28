@@ -18,6 +18,7 @@ type HikerShareNative = {
     message: string | null,
     title: string | null,
   ) => Promise<ImageShareResult | boolean>;
+  shareImages?: (paths: string[], message: string | null, title: string | null) => Promise<number>;
   copyText?: (text: string, label: string | null) => Promise<boolean>;
   shareFile?: (path: string, mimeType: string | null, title: string | null) => Promise<boolean>;
   pickTextFile?: () => Promise<string | null>;
@@ -87,6 +88,21 @@ export const shareImageContent = async (
   }
   const result = await HikerShare.shareImage(fileUri, message || null, title || null);
   return typeof result === 'object' && result !== null ? result : null;
+};
+
+// 사진 여러 장 + 텍스트 공유 (사진첩). 1장이면 shareImage 와 같은 결과
+export const shareImagesContent = async (fileUris: string[], message?: string, title?: string) => {
+  if (!isImageShareAvailable() || !HikerShare) {
+    throw new ShareError('E_UNAVAILABLE', ERROR_MESSAGES.E_UNAVAILABLE);
+  }
+  if (fileUris.length === 1 || !HikerShare.shareImages) {
+    if (fileUris.length !== 1) {
+      throw new ShareError('E_UNAVAILABLE', ERROR_MESSAGES.E_UNAVAILABLE);
+    }
+    await HikerShare.shareImage(fileUris[0], message || null, title || null);
+    return 1;
+  }
+  return HikerShare.shareImages(fileUris, message || null, title || null);
 };
 
 // 지도 PNG + 활동 요약 카드를 이미지 1장으로 합성 (Android Canvas / iOS UIGraphicsImageRenderer). 결과: file:// PNG (캐시 폴더)
